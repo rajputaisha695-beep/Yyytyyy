@@ -1,7 +1,7 @@
 import asyncio
 import json
 import os
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ChatJoinRequestHandler, MessageHandler, filters, ContextTypes
 
@@ -13,6 +13,11 @@ ADMIN_ID = 8961906024
 
 # Schedule file
 SCHEDULE_FILE = "schedule.json"
+
+# ---------- IST TIME FUNCTION ----------
+def get_ist_time():
+    """Indian Standard Time (UTC+5:30)"""
+    return datetime.now() + timedelta(hours=5, minutes=30)
 
 # ---------- SCHEDULE FUNCTIONS ----------
 def load_schedule():
@@ -48,11 +53,6 @@ async def auto_approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
     except Exception as e:
         print(f"❌ Auto-approve error: {e}")
-
-# ---------- GET IST TIME ----------
-def get_ist_time():
-    """Indian time (IST) return kare"""
-    return datetime.now() + timedelta(hours=5, minutes=30)
 
 # ---------- COMMANDS ----------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -115,6 +115,7 @@ async def cancelvideo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['waiting_for_video'] = False
     await update.message.reply_text("❌ Video add cancelled!")
 
+# ---------- VIDEO HANDLER ----------
 async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         return
@@ -401,7 +402,7 @@ def main():
     app.add_handler(CommandHandler("stats", stats))
     app.add_handler(CommandHandler("help", help_command))
     
-    # 🔥 FIXED: Video handler - CORRECT way
+    # 🔥 VIDEO HANDLER - CORRECT WAY (100% Working)
     app.add_handler(MessageHandler(filters.VIDEO & filters.PRIVATE, handle_video))
     
     # JobQueue
