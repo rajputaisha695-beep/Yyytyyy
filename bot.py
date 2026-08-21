@@ -402,8 +402,8 @@ def main():
     app.add_handler(CommandHandler("stats", stats))
     app.add_handler(CommandHandler("help", help_command))
     
-    # 🔥 VIDEO HANDLER - CORRECT WAY (100% Working)
-    app.add_handler(MessageHandler(filters.VIDEO & filters.PRIVATE, handle_video))
+    # 🔥 FIXED: Video handler - DON'T USE filters.PRIVATE
+    app.add_handler(MessageHandler(filters.VIDEO, handle_video))
     
     # JobQueue
     job_queue = app.job_queue
