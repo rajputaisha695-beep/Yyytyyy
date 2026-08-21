@@ -412,7 +412,7 @@ def main():
     app.add_handler(CommandHandler("stats", stats))
     app.add_handler(CommandHandler("help", help_command))
     
-    # 🔥 FIXED: Video handler (sahi format)
+    # 🔥 CORRECTED: Video handler
     app.add_handler(MessageHandler(filters.VIDEO & filters.PRIVATE, handle_video))
     
     # JobQueue
