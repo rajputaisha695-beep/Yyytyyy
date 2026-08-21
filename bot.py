@@ -388,6 +388,7 @@ async def check_time(context: ContextTypes.DEFAULT_TYPE):
 
 # ---------- MAIN ----------
 def main():
+    # Build app with job queue
     app = Application.builder().token(BOT_TOKEN).build()
     
     # Auto-Approve
@@ -406,23 +407,23 @@ def main():
     app.add_handler(CommandHandler("stats", stats))
     app.add_handler(CommandHandler("help", help_command))
     
-    # Forward handler - handles all forwarded messages
+    # Forward handler
     app.add_handler(MessageHandler(filters.FORWARDED, handle_forward))
     
-    # JobQueue
+    # JobQueue - Fix
     job_queue = app.job_queue
     if job_queue:
         job_queue.run_repeating(check_time, interval=60, first=10)
         job_queue.run_daily(daily_report, time=time(23, 59, 0))
         print("✅ JobQueue initialized!")
     else:
-        print("⚠️ JobQueue not available!")
+        print("⚠️ JobQueue not available! Install: pip install python-telegram-bot[job-queue]")
     
     print("=" * 50)
     print("🤖 Auto-Approval + Forward Bot is running!")
     print(f"📢 Channel ID: {CHANNEL_ID}")
     print(f"👤 Admin ID: {ADMIN_ID}")
-    print("🕐 Timezone: IST (UTC+5:30)")
+    print(f"🕐 Current IST Time: {get_ist_time().strftime('%H:%M:%S')}")
     print("✅ Auto-approve: ON")
     print("=" * 50)
     
