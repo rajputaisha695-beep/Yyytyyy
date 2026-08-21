@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import pytz
 from datetime import datetime, time, timedelta
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ChatJoinRequestHandler, MessageHandler, filters, ContextTypes
@@ -11,20 +12,23 @@ CHANNEL_ID = -1003550209252
 ADMIN_ID = 8961906024
 # -------------------------
 
+# IST Timezone Setup (Correct)
+IST = pytz.timezone('Asia/Kolkata')
+
 # Schedule file
 SCHEDULE_FILE = "schedule.json"
 
-# ---------- IST TIME ----------
+# ---------- IST TIME FUNCTIONS ----------
 def get_ist_time():
-    """Current IST time return kare"""
-    return datetime.now() + timedelta(hours=5, minutes=30)
+    """Returns current time in IST (Indian Standard Time)"""
+    return datetime.now(IST)
 
 def get_ist_time_str():
-    """IST time as string (HH:MM:SS)"""
-    return get_ist_time().strftime("%I:%M:%S %p")  # 12-hour format with AM/PM
+    """Returns formatted IST time (e.g., 02:30:45 PM)"""
+    return get_ist_time().strftime("%I:%M:%S %p")
 
 def get_ist_date_str():
-    """IST date as string (DD-MM-YYYY)"""
+    """Returns formatted IST date (e.g., 22-08-2026)"""
     return get_ist_time().strftime("%d-%m-%Y")
 
 # ---------- SCHEDULE FUNCTIONS ----------
@@ -32,13 +36,18 @@ def load_schedule():
     if os.path.exists(SCHEDULE_FILE):
         with open(SCHEDULE_FILE, 'r') as f:
             return json.load(f)
-    return {"posts": [], "daily_count": 1, "post_time": "07:00", "custom_message": "📌 Join our channel for more updates!"}
+    return {
+        "posts": [],
+        "daily_count": 1,
+        "post_time": "07:00",
+        "custom_message": "📌 Join our channel for more updates!"
+    }
 
 def save_schedule(data):
     with open(SCHEDULE_FILE, 'w') as f:
         json.dump(data, f, indent=4)
 
-# ---------- AUTO-APPROVE ----------
+# ---------- AUTO-APPROVE (Working) ----------
 async def auto_approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         user = update.chat_join_request.from_user
@@ -49,20 +58,66 @@ async def auto_approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user_id=user.id
         )
         
-        print(f"✅ {user.first_name} approved!")
+        print(f"✅ {user.first_name} approved at {get_ist_time_str()}!")
         
-        try:
-            await context.bot.send_message(
-                chat_id=user.id,
-                text=f"🎉 Welcome to our channel!\n\n🕐 IST: {get_ist_time_str()}"
-            )
-        except:
-            pass
+        # Welcome DM with IST Time
+        await context.bot.send_message(
+            chat_id=user.id,
+            text=f"🎉 Welcome to our channel!\n\n🕐 Joined at IST: {get_ist_time_str()}"
+        )
         
     except Exception as e:
         print(f"❌ Auto-approve error: {e}")
 
-# ---------- FORWARD COMMAND ----------
+# ---------- COMMANDS ----------
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("❌ Unauthorized!")
+        return
+    
+    await update.message.reply_text(
+        f"🤖 *Auto-Post Bot* (IST)\n\n"
+        f"🕐 *Current IST Time:* {get_ist_time_str()}\n"
+        f"📅 *Date:* {get_ist_date_str()}\n\n"
+        f"📌 *Commands:*\n"
+        f"/addpost <text> - Text post add\n"
+        f"/addforward - Forward a message to schedule\n"
+        f"/settime <HH:MM AM/PM> - Set post time\n"
+        f"/setcount <number> - Daily post count\n"
+        f"/setmessage <msg> - Custom message\n"
+        f"/listposts - View all posts\n"
+        f"/removepost <index> - Remove a post\n"
+        f"/stats - Today's stats\n"
+        f"/time - Show current IST time\n"
+        f"/help - Help",
+        parse_mode="Markdown"
+    )
+
+async def addpost(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("❌ Unauthorized!")
+        return
+    
+    if not context.args:
+        await update.message.reply_text(f"❌ Usage: /addpost <your text>\n\n🕐 IST: {get_ist_time_str()}")
+        return
+    
+    post_text = " ".join(context.args)
+    schedule = load_schedule()
+    schedule["posts"].append({
+        "type": "text", 
+        "content": post_text,
+        "added_at": get_ist_time_str()
+    })
+    save_schedule(schedule)
+    
+    await update.message.reply_text(
+        f"✅ Text post added!\n\n"
+        f"📝 {post_text}\n\n"
+        f"📊 Total: {len(schedule['posts'])}\n"
+        f"🕐 Added at: {get_ist_time_str()}"
+    )
+
 async def addforward(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("❌ Unauthorized!")
@@ -71,9 +126,9 @@ async def addforward(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['waiting_for_forward'] = True
     await update.message.reply_text(
         f"📤 *Forward Mode ON*\n\n"
+        f"🕐 IST: {get_ist_time_str()}\n\n"
         f"Ab mujhe kisi bhi chat/channel se *message forward* karo.\n"
         f"Mein usko schedule me add kar dunga!\n\n"
-        f"🕐 IST: {get_ist_time_str()}\n\n"
         f"❌ Cancel: /cancelforward",
         parse_mode="Markdown"
     )
@@ -86,7 +141,6 @@ async def cancelforward(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['waiting_for_forward'] = False
     await update.message.reply_text(f"❌ Forward mode cancelled!\n\n🕐 IST: {get_ist_time_str()}")
 
-# ---------- HANDLE FORWARDED MESSAGE ----------
 async def handle_forward(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         return
@@ -119,52 +173,7 @@ async def handle_forward(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text(f"❌ Please forward a message!\n\n🕐 IST: {get_ist_time_str()}")
 
-# ---------- TEXT POST ----------
-async def addpost(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID:
-        await update.message.reply_text("❌ Unauthorized!")
-        return
-    
-    if not context.args:
-        await update.message.reply_text(f"❌ Usage: /addpost <your post content>\n\n🕐 IST: {get_ist_time_str()}")
-        return
-    
-    post_text = " ".join(context.args)
-    schedule = load_schedule()
-    schedule["posts"].append({"type": "text", "content": post_text, "added_at": get_ist_time_str()})
-    save_schedule(schedule)
-    
-    await update.message.reply_text(
-        f"✅ Text post added!\n\n"
-        f"📝 {post_text}\n\n"
-        f"📊 Total: {len(schedule['posts'])}\n"
-        f"🕐 Added at: {get_ist_time_str()}"
-    )
-
 # ---------- OTHER COMMANDS ----------
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID:
-        await update.message.reply_text("❌ Unauthorized!")
-        return
-    
-    await update.message.reply_text(
-        f"🤖 *Auto-Post Bot*\n\n"
-        f"🕐 *IST Time:* {get_ist_time_str()}\n"
-        f"📅 *Date:* {get_ist_date_str()}\n\n"
-        f"📌 *Commands:*\n"
-        f"/addpost <text> - Text post add\n"
-        f"/addforward - Forward message add\n"
-        f"/settime <HH:MM AM/PM> - Post time set\n"
-        f"/setcount <number> - Daily post count\n"
-        f"/setmessage <msg> - Custom message\n"
-        f"/listposts - All posts\n"
-        f"/removepost <index> - Remove\n"
-        f"/stats - Today's stats\n"
-        f"/time - Current IST time\n"
-        f"/help - Help",
-        parse_mode="Markdown"
-    )
-
 async def settime(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("❌ Unauthorized!")
@@ -324,7 +333,6 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(message, parse_mode="Markdown")
 
 async def time_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """/time command - Sirf live time dikhaye"""
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("❌ Unauthorized!")
         return
@@ -338,7 +346,7 @@ async def time_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await start(update, context)
 
-# ---------- AUTO-POST ----------
+# ---------- AUTO-POST (The Main Logic) ----------
 async def auto_post(context: ContextTypes.DEFAULT_TYPE):
     schedule = load_schedule()
     posts = schedule["posts"]
@@ -360,6 +368,7 @@ async def auto_post(context: ContextTypes.DEFAULT_TYPE):
         
         try:
             if post["type"] == "forward":
+                # Forward the saved message
                 await context.bot.forward_message(
                     chat_id=CHANNEL_ID,
                     from_chat_id=post["chat_id"],
@@ -367,6 +376,7 @@ async def auto_post(context: ContextTypes.DEFAULT_TYPE):
                 )
                 print(f"📤 Forwarded at {get_ist_time_str()}: {post['caption'][:50]}...")
             else:
+                # Post text
                 await context.bot.send_message(
                     chat_id=CHANNEL_ID,
                     text=post["content"]
@@ -375,6 +385,7 @@ async def auto_post(context: ContextTypes.DEFAULT_TYPE):
             
             posted_today += 1
             
+            # Custom message after each post
             await context.bot.send_message(
                 chat_id=CHANNEL_ID,
                 text=custom_msg
@@ -385,6 +396,7 @@ async def auto_post(context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             print(f"❌ Post error at {get_ist_time_str()}: {e}")
     
+    # Remove posted posts from queue
     if posted_today > 0:
         schedule["posts"] = schedule["posts"][posted_today:]
         save_schedule(schedule)
@@ -394,6 +406,7 @@ async def auto_post(context: ContextTypes.DEFAULT_TYPE):
             context.bot.daily_stats = {"today": get_ist_date_str(), "posted": 0}
         context.bot.daily_stats["posted"] += posted_today
         
+        # Send report to admin
         await context.bot.send_message(
             chat_id=ADMIN_ID,
             text=f"📊 *Daily Report*\n\n"
@@ -425,21 +438,14 @@ async def daily_report(context: ContextTypes.DEFAULT_TYPE):
     context.bot.daily_stats["posted"] = 0
     context.bot.daily_stats["today"] = get_ist_date_str()
 
-# ---------- CHECK TIME ----------
-async def check_time(context: ContextTypes.DEFAULT_TYPE):
-    now = get_ist_time().strftime("%H:%M")
-    schedule = load_schedule()
-    if now == schedule["post_time"]:
-        await auto_post(context)
-
 # ---------- MAIN ----------
 def main():
     app = Application.builder().token(BOT_TOKEN).build()
     
-    # Auto-Approve
+    # Auto-Approve Handler
     app.add_handler(ChatJoinRequestHandler(auto_approve))
     
-    # Commands
+    # Command Handlers
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("addpost", addpost))
     app.add_handler(CommandHandler("addforward", addforward))
@@ -450,10 +456,10 @@ def main():
     app.add_handler(CommandHandler("listposts", listposts))
     app.add_handler(CommandHandler("removepost", removepost))
     app.add_handler(CommandHandler("stats", stats))
-    app.add_handler(CommandHandler("time", time_command))  # 🔥 Live time command
+    app.add_handler(CommandHandler("time", time_command))
     app.add_handler(CommandHandler("help", help_command))
     
-    # Forward handler
+    # Forward Handler
     app.add_handler(MessageHandler(filters.FORWARDED, handle_forward))
     
     print("=" * 50)
@@ -465,6 +471,7 @@ def main():
     print("✅ Auto-approve: ON")
     print("=" * 50)
     
+    # Start polling
     app.run_polling()
 
 if __name__ == "__main__":
