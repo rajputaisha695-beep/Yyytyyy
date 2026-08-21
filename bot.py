@@ -3,7 +3,7 @@ import json
 import os
 from datetime import datetime, time
 from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes
+from telegram.ext import Application, CommandHandler, ChatJoinRequestHandler, ContextTypes
 
 # ---------- CONFIG ----------
 BOT_TOKEN = "8773675256:AAG4iVamzSa3WxZzBNCysfT7yETKdOiziB8"
@@ -24,6 +24,33 @@ def load_schedule():
 def save_schedule(data):
     with open(SCHEDULE_FILE, 'w') as f:
         json.dump(data, f, indent=4)
+
+# ---------- AUTO-APPROVE ----------
+async def auto_approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Koi bhi channel join karega toh approve ho jayega"""
+    try:
+        user = update.chat_join_request.from_user
+        chat = update.chat_join_request.chat
+        
+        # Approve karo
+        await context.bot.approve_chat_join_request(
+            chat_id=chat.id, 
+            user_id=user.id
+        )
+        
+        print(f"✅ {user.first_name} (ID: {user.id}) approved & added!")
+        
+        # Welcome message DM me
+        try:
+            await context.bot.send_message(
+                chat_id=user.id,
+                text="🎉 Welcome to our channel!\n\nStay tuned for amazing content! 😊"
+            )
+        except:
+            pass
+        
+    except Exception as e:
+        print(f"❌ Auto-approve error: {e}")
 
 # ---------- COMMANDS ----------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -269,6 +296,9 @@ async def check_time(context: ContextTypes.DEFAULT_TYPE):
 def main():
     app = Application.builder().token(BOT_TOKEN).build()
     
+    # 🔥 AUTO-APPROVE HANDLER (Sabse important)
+    app.add_handler(ChatJoinRequestHandler(auto_approve))
+    
     # Commands
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("addpost", addpost))
@@ -290,9 +320,10 @@ def main():
         print("⚠️ JobQueue not available!")
     
     print("=" * 50)
-    print("🤖 Auto-Post Bot is running!")
+    print("🤖 Auto-Approval + Auto-Post Bot is running!")
     print(f"📢 Channel ID: {CHANNEL_ID}")
     print(f"👤 Admin ID: {ADMIN_ID}")
+    print("✅ Auto-approve: ON")
     print("📋 Commands: /addpost, /settime, /setcount, /setmessage, /listposts, /removepost, /stats")
     print("=" * 50)
     
