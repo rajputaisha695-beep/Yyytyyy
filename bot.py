@@ -3,7 +3,7 @@ import json
 import os
 from datetime import datetime, time
 from telegram import Update
-from telegram.ext import Application, CommandHandler, ChatJoinRequestHandler, ContextTypes
+from telegram.ext import Application, CommandHandler, ChatJoinRequestHandler, MessageHandler, filters, ContextTypes
 
 # ---------- CONFIG ----------
 BOT_TOKEN = "8773675256:AAG4iVamzSa3WxZzBNCysfT7yETKdOiziB8"
@@ -13,6 +13,7 @@ ADMIN_ID = 8961906024
 
 # Schedule file
 SCHEDULE_FILE = "schedule.json"
+VIDEO_QUEUE_FILE = "video_queue.json"
 
 # ---------- SCHEDULE FUNCTIONS ----------
 def load_schedule():
@@ -23,6 +24,16 @@ def load_schedule():
 
 def save_schedule(data):
     with open(SCHEDULE_FILE, 'w') as f:
+        json.dump(data, f, indent=4)
+
+def load_video_queue():
+    if os.path.exists(VIDEO_QUEUE_FILE):
+        with open(VIDEO_QUEUE_FILE, 'r') as f:
+            return json.load(f)
+    return []
+
+def save_video_queue(data):
+    with open(VIDEO_QUEUE_FILE, 'w') as f:
         json.dump(data, f, indent=4)
 
 # ---------- AUTO-APPROVE ----------
@@ -58,7 +69,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "🤖 *Auto-Post Bot*\n\n"
         "📌 *Commands:*\n"
-        "/addpost <text or video link> - Post add karo\n"
+        "/addpost <text> - Text post add karo\n"
+        "/addvideo - Video + Caption post add karo (DM me video bhejo)\n"
         "/settime <HH:MM AM/PM> - Post time set karo\n"
         "/setcount <number> - Daily post count\n"
         "/setmessage <message> - Post ke baad ka message\n"
@@ -66,11 +78,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/removepost <index> - Post remove karo\n"
         "/stats - Aaj ki stats\n"
         "/help - Help\n\n"
+        "*Video Add Kaise Karein:*\n"
+        "1. /addvideo command bhejo\n"
+        "2. Video file bhejo caption ke saath\n"
+        "3. Video queue me add ho jayega!\n\n"
         "*Examples:*\n"
         "/addpost Hello everyone!\n"
-        "/addpost https://1024terabox.com/s/abc123\n"
-        "/settime 07:00 AM\n"
-        "/settime 09:30 PM",
+        "/settime 07:00 AM",
         parse_mode="Markdown"
     )
 
@@ -80,15 +94,81 @@ async def addpost(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     if not context.args:
-        await update.message.reply_text("❌ Usage: /addpost <your post content or video link>")
+        await update.message.reply_text("❌ Usage: /addpost <your post content>")
         return
     
     post_text = " ".join(context.args)
     schedule = load_schedule()
-    schedule["posts"].append(post_text)
+    schedule["posts"].append({"type": "text", "content": post_text})
     save_schedule(schedule)
     
-    await update.message.reply_text(f"✅ Post added!\n\n📝 {post_text}\n\n📊 Total posts: {len(schedule['posts'])}")
+    await update.message.reply_text(f"✅ Text post added!\n\n📝 {post_text}\n\n📊 Total posts: {len(schedule['posts'])}")
+
+async def addvideo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Video add karne ke liye command"""
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("❌ Unauthorized!")
+        return
+    
+    # Video queue me add karne ke liye ready
+    context.user_data['waiting_for_video'] = True
+    await update.message.reply_text(
+        "🎬 *Video Add Mode ON*\n\n"
+        "Ab mujhe video bhejo with caption.\n\n"
+        "📝 *Caption kaise bhejein:*\n"
+        "Video bhejte waqt caption likhein.\n\n"
+        "❌ Cancel karne ke liye /cancelvideo likhein.",
+        parse_mode="Markdown"
+    )
+
+async def cancelvideo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Video add cancel karo"""
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("❌ Unauthorized!")
+        return
+    
+    context.user_data['waiting_for_video'] = False
+    await update.message.reply_text("❌ Video add cancelled!")
+
+async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Video + caption handle kare"""
+    if update.effective_user.id != ADMIN_ID:
+        return
+    
+    if not context.user_data.get('waiting_for_video'):
+        return
+    
+    # Check if it's a video
+    if update.message.video:
+        video = update.message.video
+        caption = update.message.caption or "🎬 New Video"
+        
+        # Video info save karo
+        video_data = {
+            "type": "video",
+            "file_id": video.file_id,
+            "caption": caption,
+            "duration": video.duration,
+            "width": video.width,
+            "height": video.height,
+            "file_size": video.file_size
+        }
+        
+        schedule = load_schedule()
+        schedule["posts"].append(video_data)
+        save_schedule(schedule)
+        
+        context.user_data['waiting_for_video'] = False
+        
+        await update.message.reply_text(
+            f"✅ Video added successfully!\n\n"
+            f"🎬 Duration: {video.duration}s\n"
+            f"📝 Caption: {caption[:100]}...\n"
+            f"📊 Total posts: {len(schedule['posts'])}"
+        )
+        print(f"📹 Video added by admin! Caption: {caption[:50]}...")
+    else:
+        await update.message.reply_text("❌ Please send a video file!")
 
 async def settime(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
@@ -101,10 +181,8 @@ async def settime(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     time_str = " ".join(context.args).upper()
     
-    # Convert 12-hour to 24-hour format
     try:
         if "AM" in time_str or "PM" in time_str:
-            # Parse 12-hour format
             time_parts = time_str.replace("AM", "").replace("PM", "").strip().split(":")
             hour = int(time_parts[0])
             minute = int(time_parts[1])
@@ -114,7 +192,6 @@ async def settime(update: Update, context: ContextTypes.DEFAULT_TYPE):
             elif "AM" in time_str and hour == 12:
                 hour = 0
             
-            # Validate
             if 0 <= hour <= 23 and 0 <= minute <= 59:
                 schedule = load_schedule()
                 schedule["post_time"] = f"{hour:02d}:{minute:02d}"
@@ -122,10 +199,9 @@ async def settime(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text(f"✅ Post time set to {time_str} daily!")
                 return
             else:
-                await update.message.reply_text("❌ Invalid time! Use HH:MM AM/PM (e.g., 07:00 AM)")
+                await update.message.reply_text("❌ Invalid time! Use HH:MM AM/PM")
                 return
         else:
-            # Try 24-hour format
             datetime.strptime(time_str, "%H:%M")
             schedule = load_schedule()
             schedule["post_time"] = time_str
@@ -133,7 +209,7 @@ async def settime(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(f"✅ Post time set to {time_str} daily!")
             return
     except:
-        await update.message.reply_text("❌ Invalid time! Use HH:MM AM/PM (e.g., 07:00 AM or 09:30 PM)")
+        await update.message.reply_text("❌ Invalid time! Use HH:MM AM/PM (e.g., 07:00 AM)")
 
 async def setcount(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
@@ -181,16 +257,15 @@ async def listposts(update: Update, context: ContextTypes.DEFAULT_TYPE):
     posts = schedule["posts"]
     
     if not posts:
-        await update.message.reply_text("📭 No posts added yet! Use /addpost")
+        await update.message.reply_text("📭 No posts added yet! Use /addpost or /addvideo")
         return
     
     message = "📋 *All Posts:*\n\n"
     for i, post in enumerate(posts, 1):
-        # Check if it's a video/link
-        if post.startswith("http"):
-            message += f"{i}. 📹 [Video Link]({post})\n\n"
+        if post["type"] == "video":
+            message += f"{i}. 🎬 Video - {post['caption'][:100]}{'...' if len(post['caption']) > 100 else ''}\n\n"
         else:
-            message += f"{i}. {post[:100]}{'...' if len(post) > 100 else ''}\n\n"
+            message += f"{i}. 📝 {post['content'][:100]}{'...' if len(post['content']) > 100 else ''}\n\n"
     
     await update.message.reply_text(message, parse_mode="Markdown")
 
@@ -209,7 +284,7 @@ async def removepost(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if 0 <= index < len(schedule["posts"]):
             removed = schedule["posts"].pop(index)
             save_schedule(schedule)
-            await update.message.reply_text(f"✅ Removed post:\n\n{removed}")
+            await update.message.reply_text(f"✅ Removed post #{index + 1}")
         else:
             await update.message.reply_text("❌ Invalid index! Use /listposts to see indices")
     except:
@@ -256,25 +331,24 @@ async def auto_post(context: ContextTypes.DEFAULT_TYPE):
         if i >= len(posts):
             break
         
-        post_content = posts[i]
+        post = posts[i]
         
         try:
-            # Check if it's a video link
-            if post_content.startswith("http") and ("youtube.com" in post_content or "terabox.com" in post_content or "youtu.be" in post_content):
-                # Send as text with link (video link)
-                await context.bot.send_message(
+            if post["type"] == "video":
+                # Video + caption send karo
+                await context.bot.send_video(
                     chat_id=CHANNEL_ID,
-                    text=f"🎬 *Video Link:*\n\n{post_content}",
-                    parse_mode="Markdown"
+                    video=post["file_id"],
+                    caption=post["caption"]
                 )
-                print(f"📹 Video link posted: {post_content[:50]}...")
+                print(f"📹 Video posted: {post['caption'][:50]}...")
             else:
-                # Send as normal text
+                # Text post
                 await context.bot.send_message(
                     chat_id=CHANNEL_ID,
-                    text=post_content
+                    text=post["content"]
                 )
-                print(f"📤 Posted: {post_content[:50]}...")
+                print(f"📤 Posted: {post['content'][:50]}...")
             
             posted_today += 1
             
@@ -344,6 +418,8 @@ def main():
     # Commands
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("addpost", addpost))
+    app.add_handler(CommandHandler("addvideo", addvideo))
+    app.add_handler(CommandHandler("cancelvideo", cancelvideo))
     app.add_handler(CommandHandler("settime", settime))
     app.add_handler(CommandHandler("setcount", setcount))
     app.add_handler(CommandHandler("setmessage", setmessage))
@@ -351,6 +427,9 @@ def main():
     app.add_handler(CommandHandler("removepost", removepost))
     app.add_handler(CommandHandler("stats", stats))
     app.add_handler(CommandHandler("help", help_command))
+    
+    # Video handler
+    app.add_handler(MessageHandler(filters.VIDEO & filters.PRIVATE, handle_video))
     
     # JobQueue
     job_queue = app.job_queue
@@ -366,7 +445,7 @@ def main():
     print(f"📢 Channel ID: {CHANNEL_ID}")
     print(f"👤 Admin ID: {ADMIN_ID}")
     print("✅ Auto-approve: ON")
-    print("📋 Commands: /addpost, /settime, /setcount, /setmessage, /listposts, /removepost, /stats")
+    print("📋 Commands: /addpost, /addvideo, /settime, /setcount, /setmessage, /listposts, /removepost, /stats")
     print("=" * 50)
     
     app.run_polling()
