@@ -2,7 +2,6 @@ import asyncio
 import json
 import os
 from datetime import datetime, time
-import pytz
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ChatJoinRequestHandler, MessageHandler, filters, ContextTypes
 
@@ -11,9 +10,6 @@ BOT_TOKEN = "8773675256:AAG4iVamzSa3WxZzBNCysfT7yETKdOiziB8"
 CHANNEL_ID = -1003550209252
 ADMIN_ID = 8961906024
 # -------------------------
-
-# Set Indian Timezone (IST)
-IST = pytz.timezone('Asia/Kolkata')
 
 # Schedule file
 SCHEDULE_FILE = "schedule.json"
@@ -52,6 +48,11 @@ async def auto_approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
     except Exception as e:
         print(f"❌ Auto-approve error: {e}")
+
+# ---------- GET IST TIME ----------
+def get_ist_time():
+    """Indian time (IST) return kare"""
+    return datetime.now() + timedelta(hours=5, minutes=30)
 
 # ---------- COMMANDS ----------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -270,7 +271,7 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     schedule = load_schedule()
-    now = datetime.now(IST)
+    now = get_ist_time()
     today = now.strftime("%d-%m-%Y")
     
     if not hasattr(context.bot, 'daily_stats'):
@@ -341,7 +342,7 @@ async def auto_post(context: ContextTypes.DEFAULT_TYPE):
         print(f"✅ {posted_today} posts posted! {len(schedule['posts'])} remaining")
         
         if not hasattr(context.bot, 'daily_stats'):
-            context.bot.daily_stats = {"today": datetime.now(IST).strftime("%d-%m-%Y"), "posted": 0}
+            context.bot.daily_stats = {"today": get_ist_time().strftime("%d-%m-%Y"), "posted": 0}
         context.bot.daily_stats["posted"] += posted_today
         
         await context.bot.send_message(
@@ -349,7 +350,7 @@ async def auto_post(context: ContextTypes.DEFAULT_TYPE):
             text=f"📊 *Daily Post Report*\n\n"
                  f"✅ {posted_today} posts posted today!\n"
                  f"📝 Remaining: {len(schedule['posts'])}\n"
-                 f"📅 {datetime.now(IST).strftime('%d-%m-%Y')} (IST)",
+                 f"📅 {get_ist_time().strftime('%d-%m-%Y')} (IST)",
             parse_mode="Markdown"
         )
 
@@ -358,11 +359,11 @@ async def daily_report(context: ContextTypes.DEFAULT_TYPE):
     schedule = load_schedule()
     
     if not hasattr(context.bot, 'daily_stats'):
-        context.bot.daily_stats = {"today": datetime.now(IST).strftime("%d-%m-%Y"), "posted": 0}
+        context.bot.daily_stats = {"today": get_ist_time().strftime("%d-%m-%Y"), "posted": 0}
     
     stats_data = context.bot.daily_stats
     
-    report = f"📊 *Daily Report - {datetime.now(IST).strftime('%d-%m-%Y')} (IST)*\n\n"
+    report = f"📊 *Daily Report - {get_ist_time().strftime('%d-%m-%Y')} (IST)*\n\n"
     report += f"📝 Posts Today: {stats_data['posted']}\n"
     report += f"📋 Queue: {len(schedule['posts'])}\n"
     report += f"⏰ Next Time: {schedule['post_time']} IST\n"
@@ -371,11 +372,11 @@ async def daily_report(context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(chat_id=ADMIN_ID, text=report, parse_mode="Markdown")
     
     context.bot.daily_stats["posted"] = 0
-    context.bot.daily_stats["today"] = datetime.now(IST).strftime("%d-%m-%Y")
+    context.bot.daily_stats["today"] = get_ist_time().strftime("%d-%m-%Y")
 
 # ---------- CHECK TIME ----------
 async def check_time(context: ContextTypes.DEFAULT_TYPE):
-    now = datetime.now(IST).strftime("%H:%M")
+    now = get_ist_time().strftime("%H:%M")
     schedule = load_schedule()
     if now == schedule["post_time"]:
         await auto_post(context)
@@ -400,7 +401,7 @@ def main():
     app.add_handler(CommandHandler("stats", stats))
     app.add_handler(CommandHandler("help", help_command))
     
-    # Video handler
+    # 🔥 FIXED: Video handler - CORRECT way
     app.add_handler(MessageHandler(filters.VIDEO & filters.PRIVATE, handle_video))
     
     # JobQueue
@@ -416,7 +417,7 @@ def main():
     print("🤖 Auto-Approval + Auto-Post Bot is running!")
     print(f"📢 Channel ID: {CHANNEL_ID}")
     print(f"👤 Admin ID: {ADMIN_ID}")
-    print(f"🕐 Timezone: IST (Asia/Kolkata)")
+    print("🕐 Timezone: IST (UTC+5:30)")
     print("✅ Auto-approve: ON")
     print("=" * 50)
     
