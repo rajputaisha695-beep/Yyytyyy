@@ -3,32 +3,30 @@ import json
 import os
 from datetime import datetime, time
 from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram.ext import Application, CommandHandler, ContextTypes
 
 # ---------- CONFIG ----------
 BOT_TOKEN = "8773675256:AAG4iVamzSa3WxZzBNCysfT7yETKdOiziB8"
 CHANNEL_ID = -1003550209252
-ADMIN_ID = 8961906024  # 🔥 APNI ADMIN ID DALO (Apni Telegram User ID)
+ADMIN_ID = 8961906024
+# -------------------------
 
-# Schedule file (bina database ke JSON me store)
+# Schedule file
 SCHEDULE_FILE = "schedule.json"
 
 # ---------- SCHEDULE FUNCTIONS ----------
 def load_schedule():
-    """Schedule load karo"""
     if os.path.exists(SCHEDULE_FILE):
         with open(SCHEDULE_FILE, 'r') as f:
             return json.load(f)
     return {"posts": [], "daily_count": 1, "post_time": "07:00", "custom_message": "📌 Join our channel for more updates!"}
 
 def save_schedule(data):
-    """Schedule save karo"""
     with open(SCHEDULE_FILE, 'w') as f:
         json.dump(data, f, indent=4)
 
 # ---------- COMMANDS ----------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Bot start command"""
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("❌ You are not authorized!")
         return
@@ -50,7 +48,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def addpost(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Naya post add karo"""
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("❌ Unauthorized!")
         return
@@ -67,7 +64,6 @@ async def addpost(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"✅ Post added!\n\n📝 {post_text}\n\n📊 Total posts: {len(schedule['posts'])}")
 
 async def settime(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Post time set karo"""
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("❌ Unauthorized!")
         return
@@ -87,7 +83,6 @@ async def settime(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Invalid time! Use HH:MM format (e.g., 07:00)")
 
 async def setcount(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Daily post count set karo"""
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("❌ Unauthorized!")
         return
@@ -110,7 +105,6 @@ async def setcount(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Invalid number! Use /setcount 10")
 
 async def setmessage(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Custom message set karo (post ke baad aayega)"""
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("❌ Unauthorized!")
         return
@@ -126,7 +120,6 @@ async def setmessage(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"✅ Custom message set!\n\n📌 {msg}")
 
 async def listposts(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Saare posts dikhao"""
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("❌ Unauthorized!")
         return
@@ -145,7 +138,6 @@ async def listposts(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(message, parse_mode="Markdown")
 
 async def removepost(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Post remove karo"""
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("❌ Unauthorized!")
         return
@@ -167,7 +159,6 @@ async def removepost(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Invalid number!")
 
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Daily stats dikhao"""
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("❌ Unauthorized!")
         return
@@ -175,13 +166,12 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     schedule = load_schedule()
     today = datetime.now().strftime("%d-%m-%Y")
     
-    # Track stats in memory (simple)
     if not hasattr(context.bot, 'daily_stats'):
         context.bot.daily_stats = {"today": today, "posted": 0}
     
-    stats = context.bot.daily_stats
+    stats_data = context.bot.daily_stats
     message = f"📊 *Daily Stats - {today}*\n\n"
-    message += f"📝 Posts Today: {stats['posted']}\n"
+    message += f"📝 Posts Today: {stats_data['posted']}\n"
     message += f"📋 Total Posts in Queue: {len(schedule['posts'])}\n"
     message += f"⏰ Post Time: {schedule['post_time']}\n"
     message += f"📦 Daily Count: {schedule['daily_count']}\n"
@@ -193,7 +183,6 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ---------- AUTO-POST SCHEDULER ----------
 async def auto_post(context: ContextTypes.DEFAULT_TYPE):
-    """Auto post karne wala function"""
     schedule = load_schedule()
     posts = schedule["posts"]
     daily_count = schedule["daily_count"]
@@ -203,7 +192,6 @@ async def auto_post(context: ContextTypes.DEFAULT_TYPE):
         print("📭 No posts in queue!")
         return
     
-    # Kitne posts post karne hain?
     count = min(daily_count, len(posts))
     posted_today = 0
     
@@ -213,7 +201,6 @@ async def auto_post(context: ContextTypes.DEFAULT_TYPE):
         
         post_content = posts[i]
         
-        # Post send karo
         try:
             await context.bot.send_message(
                 chat_id=CHANNEL_ID,
@@ -228,24 +215,20 @@ async def auto_post(context: ContextTypes.DEFAULT_TYPE):
                 text=custom_msg
             )
             
-            # Thoda wait karo (spam se bachne ke liye)
             await asyncio.sleep(5)
             
         except Exception as e:
             print(f"❌ Post error: {e}")
     
-    # Remove posted posts from queue (post ho gaye toh hatao)
     if posted_today > 0:
         schedule["posts"] = schedule["posts"][posted_today:]
         save_schedule(schedule)
         print(f"✅ {posted_today} posts posted! {len(schedule['posts'])} remaining")
         
-        # Stats update
         if not hasattr(context.bot, 'daily_stats'):
             context.bot.daily_stats = {"today": datetime.now().strftime("%d-%m-%Y"), "posted": 0}
         context.bot.daily_stats["posted"] += posted_today
         
-        # Send report to admin
         await context.bot.send_message(
             chat_id=ADMIN_ID,
             text=f"📊 *Daily Post Report*\n\n"
@@ -257,25 +240,30 @@ async def auto_post(context: ContextTypes.DEFAULT_TYPE):
 
 # ---------- DAILY STATS REPORT ----------
 async def daily_report(context: ContextTypes.DEFAULT_TYPE):
-    """Rozana stats report bheje"""
     schedule = load_schedule()
     
     if not hasattr(context.bot, 'daily_stats'):
         context.bot.daily_stats = {"today": datetime.now().strftime("%d-%m-%Y"), "posted": 0}
     
-    stats = context.bot.daily_stats
+    stats_data = context.bot.daily_stats
     
     report = f"📊 *Daily Report - {datetime.now().strftime('%d-%m-%Y')}*\n\n"
-    report += f"📝 Posts Today: {stats['posted']}\n"
+    report += f"📝 Posts Today: {stats_data['posted']}\n"
     report += f"📋 Posts in Queue: {len(schedule['posts'])}\n"
     report += f"⏰ Next Post Time: {schedule['post_time']}\n"
     report += f"📦 Daily Count: {schedule['daily_count']}\n"
     
     await context.bot.send_message(chat_id=ADMIN_ID, text=report, parse_mode="Markdown")
     
-    # Reset daily stats
     context.bot.daily_stats["posted"] = 0
     context.bot.daily_stats["today"] = datetime.now().strftime("%d-%m-%Y")
+
+# ---------- CHECK TIME ----------
+async def check_time(context: ContextTypes.DEFAULT_TYPE):
+    now = datetime.now().strftime("%H:%M")
+    schedule = load_schedule()
+    if now == schedule["post_time"]:
+        await auto_post(context)
 
 # ---------- MAIN ----------
 def main():
@@ -292,26 +280,19 @@ def main():
     app.add_handler(CommandHandler("stats", stats))
     app.add_handler(CommandHandler("help", help_command))
     
-    # Daily post scheduler
+    # JobQueue
     job_queue = app.job_queue
-    
-    # Har minute check karo ki time aaya ya nahi
-    async def check_time(context):
-        now = datetime.now().strftime("%H:%M")
-        schedule = load_schedule()
-        if now == schedule["post_time"]:
-            await auto_post(context)
-    
-    job_queue.run_repeating(check_time, interval=60, first=10)  # Har 1 minute check
-    
-    # Daily report at 23:59
-    async def schedule_report(context):
-        await daily_report(context)
-    
-    job_queue.run_daily(schedule_report, time=time(23, 59, 0))
+    if job_queue:
+        job_queue.run_repeating(check_time, interval=60, first=10)
+        job_queue.run_daily(daily_report, time=time(23, 59, 0))
+        print("✅ JobQueue initialized!")
+    else:
+        print("⚠️ JobQueue not available!")
     
     print("=" * 50)
     print("🤖 Auto-Post Bot is running!")
+    print(f"📢 Channel ID: {CHANNEL_ID}")
+    print(f"👤 Admin ID: {ADMIN_ID}")
     print("📋 Commands: /addpost, /settime, /setcount, /setmessage, /listposts, /removepost, /stats")
     print("=" * 50)
     
