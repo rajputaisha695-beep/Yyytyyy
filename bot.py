@@ -7,7 +7,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 
 # ---------- CONFIG ----------
 BOT_TOKEN = "8773675256:AAG4iVamzSa3WxZzBNCysfT7yETKdOiziB8"
-CHANNEL_ID = -1004448642076
+CHANNEL_ID = -1003550209252
 ADMIN_ID = 8961906024  # 🔥 APNI ADMIN ID DALO (Apni Telegram User ID)
 
 # Schedule file (bina database ke JSON me store)
