@@ -13,7 +13,6 @@ ADMIN_ID = 8961906024
 
 # Schedule file
 SCHEDULE_FILE = "schedule.json"
-VIDEO_QUEUE_FILE = "video_queue.json"
 
 # ---------- SCHEDULE FUNCTIONS ----------
 def load_schedule():
@@ -24,16 +23,6 @@ def load_schedule():
 
 def save_schedule(data):
     with open(SCHEDULE_FILE, 'w') as f:
-        json.dump(data, f, indent=4)
-
-def load_video_queue():
-    if os.path.exists(VIDEO_QUEUE_FILE):
-        with open(VIDEO_QUEUE_FILE, 'r') as f:
-            return json.load(f)
-    return []
-
-def save_video_queue(data):
-    with open(VIDEO_QUEUE_FILE, 'w') as f:
         json.dump(data, f, indent=4)
 
 # ---------- AUTO-APPROVE ----------
@@ -110,7 +99,6 @@ async def addvideo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Unauthorized!")
         return
     
-    # Video queue me add karne ke liye ready
     context.user_data['waiting_for_video'] = True
     await update.message.reply_text(
         "🎬 *Video Add Mode ON*\n\n"
@@ -143,7 +131,6 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
         video = update.message.video
         caption = update.message.caption or "🎬 New Video"
         
-        # Video info save karo
         video_data = {
             "type": "video",
             "file_id": video.file_id,
@@ -335,7 +322,6 @@ async def auto_post(context: ContextTypes.DEFAULT_TYPE):
         
         try:
             if post["type"] == "video":
-                # Video + caption send karo
                 await context.bot.send_video(
                     chat_id=CHANNEL_ID,
                     video=post["file_id"],
@@ -343,7 +329,6 @@ async def auto_post(context: ContextTypes.DEFAULT_TYPE):
                 )
                 print(f"📹 Video posted: {post['caption'][:50]}...")
             else:
-                # Text post
                 await context.bot.send_message(
                     chat_id=CHANNEL_ID,
                     text=post["content"]
@@ -352,7 +337,6 @@ async def auto_post(context: ContextTypes.DEFAULT_TYPE):
             
             posted_today += 1
             
-            # Custom message after each post
             await context.bot.send_message(
                 chat_id=CHANNEL_ID,
                 text=custom_msg
@@ -428,7 +412,7 @@ def main():
     app.add_handler(CommandHandler("stats", stats))
     app.add_handler(CommandHandler("help", help_command))
     
-    # Video handler
+    # 🔥 FIXED: Video handler (sahi format)
     app.add_handler(MessageHandler(filters.VIDEO & filters.PRIVATE, handle_video))
     
     # JobQueue
