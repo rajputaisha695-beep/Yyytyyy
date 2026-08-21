@@ -6,7 +6,7 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
 # ---------- CONFIG ----------
-BOT_TOKEN = "8637298706:AAFFaJWyUYkZAuJcZKW_a2Yjno8hgiWCOEc"
+BOT_TOKEN = "8773675256:AAG4iVamzSa3WxZzBNCysfT7yETKdOiziB8"
 CHANNEL_ID = -1004448642076
 ADMIN_ID = 8961906024  # 🔥 APNI ADMIN ID DALO (Apni Telegram User ID)
 
