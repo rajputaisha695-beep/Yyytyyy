@@ -3,7 +3,7 @@ import json
 import os
 from datetime import datetime, time, timedelta
 from telegram import Update
-from telegram.ext import Application, CommandHandler, ChatJoinRequestHandler, ContextTypes
+from telegram.ext import Application, CommandHandler, ChatJoinRequestHandler, MessageHandler, filters, ContextTypes
 
 # ---------- CONFIG ----------
 BOT_TOKEN = "8773675256:AAG4iVamzSa3WxZzBNCysfT7yETKdOiziB8"
@@ -55,7 +55,6 @@ async def auto_approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ---------- FORWARD COMMAND ----------
 async def addforward(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Message forward karne ke liye command"""
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("❌ Unauthorized!")
         return
@@ -201,6 +200,10 @@ async def setcount(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     try:
         count = int(context.args[0])
+        if count < 1:
+            await update.message.reply_text("❌ Count must be at least 1!")
+            return
+        
         schedule = load_schedule()
         schedule["daily_count"] = count
         save_schedule(schedule)
