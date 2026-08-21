@@ -27,20 +27,17 @@ def save_schedule(data):
 
 # ---------- AUTO-APPROVE ----------
 async def auto_approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Koi bhi channel join karega toh approve ho jayega"""
     try:
         user = update.chat_join_request.from_user
         chat = update.chat_join_request.chat
         
-        # Approve karo
         await context.bot.approve_chat_join_request(
             chat_id=chat.id, 
             user_id=user.id
         )
         
-        print(f"✅ {user.first_name} (ID: {user.id}) approved & added!")
+        print(f"✅ {user.first_name} (ID: {user.id}) approved!")
         
-        # Welcome message DM me
         try:
             await context.bot.send_message(
                 chat_id=user.id,
@@ -61,16 +58,19 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "🤖 *Auto-Post Bot*\n\n"
         "📌 *Commands:*\n"
-        "/addpost <post> - Naya post add karo\n"
-        "/settime <HH:MM> - Post time set karo (24hr format)\n"
-        "/setcount <number> - Daily post count set karo\n"
-        "/setmessage <message> - Post ke baad ka custom message\n"
+        "/addpost <text or video link> - Post add karo\n"
+        "/settime <HH:MM AM/PM> - Post time set karo\n"
+        "/setcount <number> - Daily post count\n"
+        "/setmessage <message> - Post ke baad ka message\n"
         "/listposts - Saare posts dekho\n"
         "/removepost <index> - Post remove karo\n"
-        "/stats - Aaj ki stats dekho\n"
-        "/help - Yeh message\n\n"
-        "*Example:*\n"
-        "/addpost Hello everyone! Welcome to our channel!",
+        "/stats - Aaj ki stats\n"
+        "/help - Help\n\n"
+        "*Examples:*\n"
+        "/addpost Hello everyone!\n"
+        "/addpost https://1024terabox.com/s/abc123\n"
+        "/settime 07:00 AM\n"
+        "/settime 09:30 PM",
         parse_mode="Markdown"
     )
 
@@ -80,7 +80,7 @@ async def addpost(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     if not context.args:
-        await update.message.reply_text("❌ Usage: /addpost <your post content>")
+        await update.message.reply_text("❌ Usage: /addpost <your post content or video link>")
         return
     
     post_text = " ".join(context.args)
@@ -96,18 +96,44 @@ async def settime(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     if not context.args:
-        await update.message.reply_text("❌ Usage: /settime 07:00")
+        await update.message.reply_text("❌ Usage: /settime 07:00 AM or /settime 09:30 PM")
         return
     
-    time_str = context.args[0]
+    time_str = " ".join(context.args).upper()
+    
+    # Convert 12-hour to 24-hour format
     try:
-        datetime.strptime(time_str, "%H:%M")
-        schedule = load_schedule()
-        schedule["post_time"] = time_str
-        save_schedule(schedule)
-        await update.message.reply_text(f"✅ Post time set to {time_str} daily!")
+        if "AM" in time_str or "PM" in time_str:
+            # Parse 12-hour format
+            time_parts = time_str.replace("AM", "").replace("PM", "").strip().split(":")
+            hour = int(time_parts[0])
+            minute = int(time_parts[1])
+            
+            if "PM" in time_str and hour != 12:
+                hour += 12
+            elif "AM" in time_str and hour == 12:
+                hour = 0
+            
+            # Validate
+            if 0 <= hour <= 23 and 0 <= minute <= 59:
+                schedule = load_schedule()
+                schedule["post_time"] = f"{hour:02d}:{minute:02d}"
+                save_schedule(schedule)
+                await update.message.reply_text(f"✅ Post time set to {time_str} daily!")
+                return
+            else:
+                await update.message.reply_text("❌ Invalid time! Use HH:MM AM/PM (e.g., 07:00 AM)")
+                return
+        else:
+            # Try 24-hour format
+            datetime.strptime(time_str, "%H:%M")
+            schedule = load_schedule()
+            schedule["post_time"] = time_str
+            save_schedule(schedule)
+            await update.message.reply_text(f"✅ Post time set to {time_str} daily!")
+            return
     except:
-        await update.message.reply_text("❌ Invalid time! Use HH:MM format (e.g., 07:00)")
+        await update.message.reply_text("❌ Invalid time! Use HH:MM AM/PM (e.g., 07:00 AM or 09:30 PM)")
 
 async def setcount(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
@@ -160,7 +186,11 @@ async def listposts(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     message = "📋 *All Posts:*\n\n"
     for i, post in enumerate(posts, 1):
-        message += f"{i}. {post[:100]}{'...' if len(post) > 100 else ''}\n\n"
+        # Check if it's a video/link
+        if post.startswith("http"):
+            message += f"{i}. 📹 [Video Link]({post})\n\n"
+        else:
+            message += f"{i}. {post[:100]}{'...' if len(post) > 100 else ''}\n\n"
     
     await update.message.reply_text(message, parse_mode="Markdown")
 
@@ -208,7 +238,7 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await start(update, context)
 
-# ---------- AUTO-POST SCHEDULER ----------
+# ---------- AUTO-POST ----------
 async def auto_post(context: ContextTypes.DEFAULT_TYPE):
     schedule = load_schedule()
     posts = schedule["posts"]
@@ -229,14 +259,26 @@ async def auto_post(context: ContextTypes.DEFAULT_TYPE):
         post_content = posts[i]
         
         try:
-            await context.bot.send_message(
-                chat_id=CHANNEL_ID,
-                text=post_content
-            )
-            print(f"📤 Posted: {post_content[:50]}...")
+            # Check if it's a video link
+            if post_content.startswith("http") and ("youtube.com" in post_content or "terabox.com" in post_content or "youtu.be" in post_content):
+                # Send as text with link (video link)
+                await context.bot.send_message(
+                    chat_id=CHANNEL_ID,
+                    text=f"🎬 *Video Link:*\n\n{post_content}",
+                    parse_mode="Markdown"
+                )
+                print(f"📹 Video link posted: {post_content[:50]}...")
+            else:
+                # Send as normal text
+                await context.bot.send_message(
+                    chat_id=CHANNEL_ID,
+                    text=post_content
+                )
+                print(f"📤 Posted: {post_content[:50]}...")
+            
             posted_today += 1
             
-            # Custom message send karo (har post ke baad)
+            # Custom message after each post
             await context.bot.send_message(
                 chat_id=CHANNEL_ID,
                 text=custom_msg
@@ -265,7 +307,7 @@ async def auto_post(context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
 
-# ---------- DAILY STATS REPORT ----------
+# ---------- DAILY REPORT ----------
 async def daily_report(context: ContextTypes.DEFAULT_TYPE):
     schedule = load_schedule()
     
@@ -296,7 +338,7 @@ async def check_time(context: ContextTypes.DEFAULT_TYPE):
 def main():
     app = Application.builder().token(BOT_TOKEN).build()
     
-    # 🔥 AUTO-APPROVE HANDLER (Sabse important)
+    # Auto-Approve
     app.add_handler(ChatJoinRequestHandler(auto_approve))
     
     # Commands
