@@ -7,7 +7,7 @@ from telegram.ext import Application, CommandHandler, ChatJoinRequestHandler, Me
 
 # ---------- CONFIG ----------
 BOT_TOKEN = "8773675256:AAG4iVamzSa3WxZzBNCysfT7yETKdOiziB8"
-CHANNEL_ID = -1003550209252
+CHANNEL_ID = -1003598998273
 ADMIN_ID = 8961906024
 # -------------------------
 
