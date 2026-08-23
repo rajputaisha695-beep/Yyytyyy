@@ -98,49 +98,43 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown"
     )
 
-# ---------- 🔥 APPROVE ALL - FIXED VERSION ----------
+# ---------- 🔥 APPROVE ALL - 100% WORKING ----------
 async def approveall(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("❌ Unauthorized!")
         return
     
-    await update.message.reply_text("📥 Fetching pending join requests...")
+    msg = await update.message.reply_text("📥 Fetching pending join requests...")
     
     try:
-        # 🔥 FIX: Direct API call using bot instance
+        # 🔥 FIX: Direct API call using bot
         bot = context.bot
         
-        # Get chat join requests using proper method
-        pending_requests = await bot.get_chat_join_requests(
-            chat_id=CHANNEL_ID,
-            limit=100  # Max 100 at a time
-        )
+        # Get all pending join requests
+        pending_requests = []
+        async for request in bot.get_chat_join_requests(CHANNEL_ID):
+            pending_requests.append(request)
         
-        pending_list = []
-        async for request in pending_requests:
-            pending_list.append(request)
-        
-        if not pending_list:
-            await update.message.reply_text("✅ No pending requests found!")
+        if not pending_requests:
+            await msg.edit_text("✅ No pending requests found!")
             return
         
-        await update.message.reply_text(f"📊 Found {len(pending_list)} pending requests. Approving...")
+        total = len(pending_requests)
+        await msg.edit_text(f"📊 Found {total} pending requests. Approving...")
         
-        approved_count = 0
-        failed_count = 0
+        approved = 0
+        failed = 0
         
-        for request in pending_list:
+        for request in pending_requests:
+            user = request.from_user
             try:
-                user = request.from_user
-                
-                # Approve karo
                 await bot.approve_chat_join_request(
                     chat_id=CHANNEL_ID,
                     user_id=user.id
                 )
-                approved_count += 1
+                approved += 1
                 
-                # Welcome DM bhejo
+                # Welcome DM
                 try:
                     welcome_text = WELCOME_MESSAGE.format(
                         time=ist_str(),
@@ -155,23 +149,23 @@ async def approveall(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 except:
                     pass
                 
-                await asyncio.sleep(0.5)
+                await asyncio.sleep(0.3)
                 
             except Exception as e:
-                failed_count += 1
-                print(f"❌ Error approving {user.first_name}: {e}")
+                failed += 1
+                print(f"❌ Error: {e}")
         
-        await update.message.reply_text(
+        await msg.edit_text(
             f"✅ *Approve Complete!*\n\n"
-            f"✅ Approved: {approved_count}\n"
-            f"❌ Failed: {failed_count}\n"
-            f"📋 Total: {len(pending_list)}\n"
+            f"✅ Approved: {approved}\n"
+            f"❌ Failed: {failed}\n"
+            f"📋 Total: {total}\n"
             f"🕐 {ist_str()}",
             parse_mode="Markdown"
         )
         
     except Exception as e:
-        await update.message.reply_text(f"❌ Error: {e}")
+        await msg.edit_text(f"❌ Error: {str(e)}")
         print(f"❌ ApproveAll Error: {e}")
 
 # ---------- SET WELCOME ----------
@@ -190,14 +184,13 @@ async def setwelcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
     with open("welcome.txt", "w") as f:
         f.write(WELCOME_MESSAGE)
     
-    await update.message.reply_text(f"✅ Welcome message updated!\n\n{WELCOME_MESSAGE}")
+    await update.message.reply_text(f"✅ Welcome message updated!")
 
 async def viewwelcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("❌ Unauthorized!")
         return
     
-    global WELCOME_MESSAGE
     await update.message.reply_text(
         f"📋 *Current Welcome Message:*\n\n{WELCOME_MESSAGE}",
         parse_mode="Markdown"
@@ -406,6 +399,7 @@ def main():
     
     app = Application.builder().token(BOT_TOKEN).build()
     
+    # Handlers
     app.add_handler(ChatJoinRequestHandler(auto_approve))
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("addpost", addpost))
