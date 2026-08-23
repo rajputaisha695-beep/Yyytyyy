@@ -11,7 +11,7 @@ CHANNEL_ID = -1003550209252
 ADMIN_ID = 8961906024
 # -------------------------
 
-# ---------- 🔥 WELCOME MESSAGE (JO AAP CHAHTE HO) ----------
+# ---------- 🔥 WELCOME MESSAGE ----------
 WELCOME_MESSAGE = """🎉 *Welcome to our channel!* 🎉
 
 Thank you for joining! We're glad to have you here.
@@ -21,15 +21,10 @@ Thank you for joining! We're glad to have you here.
 2️⃣ Be Respectful
 3️⃣ No Promotions
 
-🔗 *Useful Links:*
-• Channel: [Click Here](https://t.me/your_channel)
-• Support: @YourSupportBot
-
 Enjoy your stay! 😊
 
 🕐 Joined at: {time}
 """
-# -----------------------------------------------------------
 
 SCHEDULE_FILE = "schedule.json"
 
@@ -49,13 +44,12 @@ def save_schedule(data):
     with open(SCHEDULE_FILE, 'w') as f:
         json.dump(data, f, indent=4)
 
-# ---------- AUTO-APPROVE + WELCOME DM ----------
+# ---------- AUTO-APPROVE ----------
 async def auto_approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         user = update.chat_join_request.from_user
         chat = update.chat_join_request.chat
         
-        # Approve karo
         await context.bot.approve_chat_join_request(
             chat_id=chat.id, 
             user_id=user.id
@@ -63,7 +57,6 @@ async def auto_approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         print(f"✅ {user.first_name} approved at {ist_str()}!")
         
-        # 🔥 Welcome DM bhejo (Custom message)
         try:
             welcome_text = WELCOME_MESSAGE.format(
                 time=ist_str(),
@@ -78,7 +71,7 @@ async def auto_approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             print(f"📤 Welcome DM sent to {user.first_name}")
         except Exception as e:
-            print(f"❌ Could not send DM to {user.first_name}: {e}")
+            print(f"❌ Could not send DM: {e}")
         
     except Exception as e:
         print(f"❌ Auto-approve error: {e}")
@@ -100,42 +93,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"/removepost <index> - Remove\n"
         f"/stats - Stats\n"
         f"/postnow - Post now!\n"
-        f"/approveall - Approve ALL pending\n"
+        f"/approveall - Approve ALL pending 🔥\n"
         f"/time - IST time",
         parse_mode="Markdown"
     )
 
-# ---------- SET WELCOME MESSAGE ----------
-async def setwelcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID:
-        await update.message.reply_text("❌ Unauthorized!")
-        return
-    
-    if not context.args:
-        await update.message.reply_text("❌ /setwelcome <your welcome message>")
-        return
-    
-    global WELCOME_MESSAGE
-    WELCOME_MESSAGE = " ".join(context.args)
-    
-    # Save to file so it persists
-    with open("welcome.txt", "w") as f:
-        f.write(WELCOME_MESSAGE)
-    
-    await update.message.reply_text(f"✅ Welcome message updated!\n\n{WELCOME_MESSAGE}")
-
-async def viewwelcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID:
-        await update.message.reply_text("❌ Unauthorized!")
-        return
-    
-    global WELCOME_MESSAGE
-    await update.message.reply_text(
-        f"📋 *Current Welcome Message:*\n\n{WELCOME_MESSAGE}",
-        parse_mode="Markdown"
-    )
-
-# ---------- APPROVE ALL PENDING ----------
+# ---------- 🔥 APPROVE ALL - FIXED ----------
 async def approveall(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("❌ Unauthorized!")
@@ -144,7 +107,8 @@ async def approveall(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("📥 Fetching pending join requests...")
     
     try:
-        pending_requests = await context.bot.get_chat_join_requests(chat_id=CHANNEL_ID)
+        # 🟢 FIX: get_chat_join_requests ka sahi tarika
+        pending_requests = await context.bot.get_chat_join_requests(CHANNEL_ID)
         
         pending_list = []
         async for request in pending_requests:
@@ -162,13 +126,15 @@ async def approveall(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for request in pending_list:
             try:
                 user = request.from_user
+                
+                # Approve karo
                 await context.bot.approve_chat_join_request(
                     chat_id=CHANNEL_ID,
                     user_id=user.id
                 )
                 approved_count += 1
                 
-                # 🔥 Welcome DM bhejo
+                # Welcome DM bhejo
                 try:
                     welcome_text = WELCOME_MESSAGE.format(
                         time=ist_str(),
@@ -183,7 +149,8 @@ async def approveall(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 except:
                     pass
                 
-                await asyncio.sleep(0.3)
+                await asyncio.sleep(0.5)
+                
             except Exception as e:
                 failed_count += 1
                 print(f"❌ Error: {e}")
@@ -199,6 +166,36 @@ async def approveall(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
     except Exception as e:
         await update.message.reply_text(f"❌ Error: {e}")
+        print(f"❌ ApproveAll Error: {e}")
+
+# ---------- SET WELCOME ----------
+async def setwelcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("❌ Unauthorized!")
+        return
+    
+    if not context.args:
+        await update.message.reply_text("❌ /setwelcome <your welcome message>")
+        return
+    
+    global WELCOME_MESSAGE
+    WELCOME_MESSAGE = " ".join(context.args)
+    
+    with open("welcome.txt", "w") as f:
+        f.write(WELCOME_MESSAGE)
+    
+    await update.message.reply_text(f"✅ Welcome message updated!\n\n{WELCOME_MESSAGE}")
+
+async def viewwelcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("❌ Unauthorized!")
+        return
+    
+    global WELCOME_MESSAGE
+    await update.message.reply_text(
+        f"📋 *Current Welcome Message:*\n\n{WELCOME_MESSAGE}",
+        parse_mode="Markdown"
+    )
 
 # ---------- OTHER COMMANDS ----------
 async def addpost(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -396,7 +393,6 @@ async def check_time(context: ContextTypes.DEFAULT_TYPE):
 
 # ---------- MAIN ----------
 def main():
-    # Load welcome message from file if exists
     global WELCOME_MESSAGE
     if os.path.exists("welcome.txt"):
         with open("welcome.txt", "r") as f:
@@ -412,13 +408,13 @@ def main():
     app.add_handler(CommandHandler("settime", settime))
     app.add_handler(CommandHandler("setcount", setcount))
     app.add_handler(CommandHandler("setmessage", setmessage))
-    app.add_handler(CommandHandler("setwelcome", setwelcome))  # 🔥 New
-    app.add_handler(CommandHandler("viewwelcome", viewwelcome))  # 🔥 New
+    app.add_handler(CommandHandler("setwelcome", setwelcome))
+    app.add_handler(CommandHandler("viewwelcome", viewwelcome))
     app.add_handler(CommandHandler("listposts", listposts))
     app.add_handler(CommandHandler("removepost", removepost))
     app.add_handler(CommandHandler("stats", stats))
     app.add_handler(CommandHandler("postnow", postnow))
-    app.add_handler(CommandHandler("approveall", approveall))
+    app.add_handler(CommandHandler("approveall", approveall))  # 🔥 Fixed
     app.add_handler(CommandHandler("time", time_command))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(MessageHandler(filters.FORWARDED, handle_forward))
@@ -427,7 +423,6 @@ def main():
     print(f"🤖 Bot Running! IST: {ist_str()}")
     print(f"📢 Channel: {CHANNEL_ID}")
     print("📋 /approveall - Approve ALL pending")
-    print("📋 /setwelcome - Set welcome message")
     print("=" * 50)
     
     app.run_polling()
