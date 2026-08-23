@@ -11,7 +11,7 @@ CHANNEL_ID = -1003550209252
 ADMIN_ID = 8961906024
 # -------------------------
 
-# ---------- 🔥 WELCOME MESSAGE ----------
+# ---------- WELCOME MESSAGE ----------
 WELCOME_MESSAGE = """🎉 *Welcome to our channel!* 🎉
 
 Thank you for joining! We're glad to have you here.
@@ -98,7 +98,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown"
     )
 
-# ---------- 🔥 APPROVE ALL - FIXED ----------
+# ---------- 🔥 APPROVE ALL - FIXED VERSION ----------
 async def approveall(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("❌ Unauthorized!")
@@ -107,8 +107,14 @@ async def approveall(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("📥 Fetching pending join requests...")
     
     try:
-        # 🟢 FIX: get_chat_join_requests ka sahi tarika
-        pending_requests = await context.bot.get_chat_join_requests(CHANNEL_ID)
+        # 🔥 FIX: Direct API call using bot instance
+        bot = context.bot
+        
+        # Get chat join requests using proper method
+        pending_requests = await bot.get_chat_join_requests(
+            chat_id=CHANNEL_ID,
+            limit=100  # Max 100 at a time
+        )
         
         pending_list = []
         async for request in pending_requests:
@@ -128,7 +134,7 @@ async def approveall(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 user = request.from_user
                 
                 # Approve karo
-                await context.bot.approve_chat_join_request(
+                await bot.approve_chat_join_request(
                     chat_id=CHANNEL_ID,
                     user_id=user.id
                 )
@@ -141,7 +147,7 @@ async def approveall(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         first_name=user.first_name,
                         username=user.username or "No username"
                     )
-                    await context.bot.send_message(
+                    await bot.send_message(
                         chat_id=user.id,
                         text=welcome_text,
                         parse_mode="Markdown"
@@ -153,7 +159,7 @@ async def approveall(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 
             except Exception as e:
                 failed_count += 1
-                print(f"❌ Error: {e}")
+                print(f"❌ Error approving {user.first_name}: {e}")
         
         await update.message.reply_text(
             f"✅ *Approve Complete!*\n\n"
@@ -414,7 +420,7 @@ def main():
     app.add_handler(CommandHandler("removepost", removepost))
     app.add_handler(CommandHandler("stats", stats))
     app.add_handler(CommandHandler("postnow", postnow))
-    app.add_handler(CommandHandler("approveall", approveall))  # 🔥 Fixed
+    app.add_handler(CommandHandler("approveall", approveall))
     app.add_handler(CommandHandler("time", time_command))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(MessageHandler(filters.FORWARDED, handle_forward))
