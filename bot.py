@@ -1,430 +1,238 @@
 import asyncio
-import json
 import os
+import json
 from datetime import datetime, timedelta
 from telegram import Update
-from telegram.ext import Application, CommandHandler, ChatJoinRequestHandler, MessageHandler, filters, ContextTypes
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
 # ---------- CONFIG ----------
 BOT_TOKEN = "8773675256:AAG4iVamzSa3WxZzBNCysfT7yETKdOiziB8"
-CHANNEL_ID = -1003598998273
+GROUP_ID = -1003915549696  
 ADMIN_ID = 8961906024
-# -------------------------
 
-# ---------- WELCOME MESSAGE ----------
-WELCOME_MESSAGE = """🎉 *Welcome to our channel!* 🎉
 
-Thank you for joining! We're glad to have you here.
+MSG_FILE = "messages.json"
 
-📌 *Rules:*
-1️⃣ No Spam
-2️⃣ Be Respectful
-3️⃣ No Promotions
+# ---------- LOAD/SAVE ----------
+def load_messages():
+    if os.path.exists(MSG_FILE):
+        with open(MSG_FILE, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+            return data.get("messages", [])
+    return []
 
-Enjoy your stay! 😊
+def save_messages(messages):
+    with open(MSG_FILE, 'w', encoding='utf-8') as f:
+        json.dump({"messages": messages}, f, ensure_ascii=False, indent=2)
 
-🕐 Joined at: {time}
-"""
-
-SCHEDULE_FILE = "schedule.json"
-
-def get_ist():
-    return datetime.now() + timedelta(hours=5, minutes=30)
-
+# ---------- IST TIME ----------
 def ist_str():
-    return get_ist().strftime("%I:%M:%S %p")
+    return (datetime.now() + timedelta(hours=5, minutes=30)).strftime("%I:%M:%S %p")
 
-def load_schedule():
-    if os.path.exists(SCHEDULE_FILE):
-        with open(SCHEDULE_FILE, 'r') as f:
-            return json.load(f)
-    return {"posts": [], "daily_count": 1, "post_time": "07:00", "custom_message": "📌 Thanks for joining!"}
+# ---------- 🔥 NEW MEMBER ----------
+async def new_member_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message or not update.message.new_chat_members:
+        return
+    if update.message.chat.id != GROUP_ID:
+        return
 
-def save_schedule(data):
-    with open(SCHEDULE_FILE, 'w') as f:
-        json.dump(data, f, indent=4)
+    messages = load_messages()
+    if not messages:
+        return
 
-# ---------- AUTO-APPROVE ----------
-async def auto_approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        user = update.chat_join_request.from_user
-        chat = update.chat_join_request.chat
+    for member in update.message.new_chat_members:
+        if member.id == context.bot.id:
+            continue
+
+        print(f"🆕 New member: {member.first_name}")
+
+        # 🔥 Saare messages bhejo
+        for msg in messages:
+            try:
+                await context.bot.send_message(
+                    chat_id=GROUP_ID,
+                    text=msg,
+                    parse_mode=None
+                )
+                print("📤 Message sent!")
+                await asyncio.sleep(2)  # 2 second gap
+            except Exception as e:
+                print(f"❌ Error: {e}")
+
+# ---------- 🔥 SET MESSAGE ----------
+async def setmsg(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("❌ Unauthorized!")
+        return
+
+    # Agar command ke saath kuch likha hai toh wahi save karo
+    if context.args:
+        msg = " ".join(context.args)
+        msg = msg.replace("\\n", "\n")
         
-        await context.bot.approve_chat_join_request(
-            chat_id=chat.id, 
-            user_id=user.id
-        )
-        
-        print(f"✅ {user.first_name} approved at {ist_str()}!")
-        
-        try:
-            welcome_text = WELCOME_MESSAGE.format(
-                time=ist_str(),
-                first_name=user.first_name,
-                username=user.username or "No username"
-            )
-            
-            await context.bot.send_message(
-                chat_id=user.id,
-                text=welcome_text,
+        # 🔥 Check if message contains separator "---"
+        if "---" in msg:
+            parts = msg.split("---")
+            messages = [p.strip() for p in parts if p.strip()]
+            save_messages(messages)
+            await update.message.reply_text(
+                f"✅ *{len(messages)} messages saved!*\n\n"
+                f"📋 *Preview:*\n" + "\n\n---\n\n".join([f"Msg {i+1}:\n{m}" for i, m in enumerate(messages)]),
                 parse_mode="Markdown"
             )
-            print(f"📤 Welcome DM sent to {user.first_name}")
-        except Exception as e:
-            print(f"❌ Could not send DM: {e}")
-        
-    except Exception as e:
-        print(f"❌ Auto-approve error: {e}")
+        else:
+            save_messages([msg])
+            await update.message.reply_text(
+                f"✅ *Message saved!*\n\n```\n{msg}\n```",
+                parse_mode="Markdown"
+            )
+        return
 
-# ---------- COMMANDS ----------
+    # Multi-line mode
+    context.user_data['collecting'] = True
+    context.user_data['temp_msgs'] = []
+    context.user_data['current_msg'] = []
+
+    await update.message.reply_text(
+        "📝 *Send your messages one by one.*\n"
+        "Type your message and send.\n"
+        "Use `---` to separate messages.\n"
+        "When done, type: `/done`\n"
+        "Cancel: `/cancel`",
+        parse_mode="Markdown"
+    )
+
+# ---------- COLLECT ----------
+async def collect_msg(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        return
+
+    if not context.user_data.get('collecting'):
+        return
+
+    text = update.message.text
+
+    if text == "/done":
+        temp_msgs = context.user_data.get('temp_msgs', [])
+        if temp_msgs:
+            save_messages(temp_msgs)
+            preview = "\n\n---\n\n".join([f"Msg {i+1}:\n{m}" for i, m in enumerate(temp_msgs)])
+            await update.message.reply_text(
+                f"✅ *{len(temp_msgs)} messages saved!*\n\n{preview}",
+                parse_mode="Markdown"
+            )
+        else:
+            await update.message.reply_text("❌ No messages to save!")
+        context.user_data['collecting'] = False
+        context.user_data['temp_msgs'] = []
+        context.user_data['current_msg'] = []
+        return
+
+    if text == "/cancel":
+        context.user_data['collecting'] = False
+        context.user_data['temp_msgs'] = []
+        context.user_data['current_msg'] = []
+        await update.message.reply_text("❌ Cancelled!")
+        return
+
+    # 🔥 Check if it's a separator
+    if text == "---":
+        # Save current message
+        current_msg = context.user_data.get('current_msg', [])
+        if current_msg:
+            context.user_data['temp_msgs'].append("\n".join(current_msg))
+            context.user_data['current_msg'] = []
+            await update.message.reply_text(f"✅ Message {len(context.user_data['temp_msgs'])} saved! Send next or /done")
+        else:
+            await update.message.reply_text("⚠️ No message to save! Type your message first.")
+        return
+
+    # Add line to current message
+    context.user_data['current_msg'].append(text)
+    await update.message.reply_text(f"✅ Line added to current message!")
+
+# ---------- VIEW ----------
+async def viewmsg(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("❌ Unauthorized!")
+        return
+
+    messages = load_messages()
+    if not messages:
+        await update.message.reply_text("📭 No messages set! Use /setmsg")
+        return
+
+    preview = "\n\n---\n\n".join([f"📋 Msg {i+1}:\n{m}" for i, m in enumerate(messages)])
+    
+    if len(preview) > 4000:
+        preview = preview[:4000] + "\n\n... (truncated)"
+    
+    await update.message.reply_text(
+        f"📋 *Current Messages:*\n\n{preview}\n\n📊 Total: {len(messages)}",
+        parse_mode="Markdown"
+    )
+
+# ---------- CLEAR ----------
+async def clearmmsg(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("❌ Unauthorized!")
+        return
+    save_messages([])
+    await update.message.reply_text("✅ All messages cleared!")
+
+# ---------- START ----------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("❌ Unauthorized!")
         return
+
+    messages = load_messages()
     await update.message.reply_text(
-        f"🤖 *Bot*\n🕐 {ist_str()}\n\n"
-        f"/addpost <text> - Add text\n"
-        f"/addforward - Forward mode\n"
-        f"/settime <HH:MM AM/PM> - Set time\n"
-        f"/setcount <num> - Daily count\n"
-        f"/setwelcome <msg> - Set welcome message\n"
-        f"/viewwelcome - View welcome message\n"
-        f"/listposts - All posts\n"
-        f"/removepost <index> - Remove\n"
-        f"/stats - Stats\n"
-        f"/postnow - Post now!\n"
-        f"/approveall - Approve ALL pending 🔥\n"
-        f"/time - IST time",
+        f"🤖 *Group Welcome Bot*\n🕐 {ist_str()}\n\n"
+        f"/setmsg <message> - Set message (use \\n for newline)\n"
+        f"/setmsg - Multi-line mode\n"
+        f"/viewmsg - View messages\n"
+        f"/clearmmsg - Clear messages\n"
+        f"/stats - Group stats\n\n"
+        f"📊 Messages: {len(messages)}",
         parse_mode="Markdown"
     )
 
-# ---------- 🔥 APPROVE ALL - 100% WORKING ----------
-async def approveall(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID:
-        await update.message.reply_text("❌ Unauthorized!")
-        return
-    
-    msg = await update.message.reply_text("📥 Fetching pending join requests...")
-    
-    try:
-        # 🔥 FIX: Direct API call using bot
-        bot = context.bot
-        
-        # Get all pending join requests
-        pending_requests = []
-        async for request in bot.get_chat_join_requests(CHANNEL_ID):
-            pending_requests.append(request)
-        
-        if not pending_requests:
-            await msg.edit_text("✅ No pending requests found!")
-            return
-        
-        total = len(pending_requests)
-        await msg.edit_text(f"📊 Found {total} pending requests. Approving...")
-        
-        approved = 0
-        failed = 0
-        
-        for request in pending_requests:
-            user = request.from_user
-            try:
-                await bot.approve_chat_join_request(
-                    chat_id=CHANNEL_ID,
-                    user_id=user.id
-                )
-                approved += 1
-                
-                # Welcome DM
-                try:
-                    welcome_text = WELCOME_MESSAGE.format(
-                        time=ist_str(),
-                        first_name=user.first_name,
-                        username=user.username or "No username"
-                    )
-                    await bot.send_message(
-                        chat_id=user.id,
-                        text=welcome_text,
-                        parse_mode="Markdown"
-                    )
-                except:
-                    pass
-                
-                await asyncio.sleep(0.3)
-                
-            except Exception as e:
-                failed += 1
-                print(f"❌ Error: {e}")
-        
-        await msg.edit_text(
-            f"✅ *Approve Complete!*\n\n"
-            f"✅ Approved: {approved}\n"
-            f"❌ Failed: {failed}\n"
-            f"📋 Total: {total}\n"
-            f"🕐 {ist_str()}",
-            parse_mode="Markdown"
-        )
-        
-    except Exception as e:
-        await msg.edit_text(f"❌ Error: {str(e)}")
-        print(f"❌ ApproveAll Error: {e}")
-
-# ---------- SET WELCOME ----------
-async def setwelcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID:
-        await update.message.reply_text("❌ Unauthorized!")
-        return
-    
-    if not context.args:
-        await update.message.reply_text("❌ /setwelcome <your welcome message>")
-        return
-    
-    global WELCOME_MESSAGE
-    WELCOME_MESSAGE = " ".join(context.args)
-    
-    with open("welcome.txt", "w") as f:
-        f.write(WELCOME_MESSAGE)
-    
-    await update.message.reply_text(f"✅ Welcome message updated!")
-
-async def viewwelcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID:
-        await update.message.reply_text("❌ Unauthorized!")
-        return
-    
-    await update.message.reply_text(
-        f"📋 *Current Welcome Message:*\n\n{WELCOME_MESSAGE}",
-        parse_mode="Markdown"
-    )
-
-# ---------- OTHER COMMANDS ----------
-async def addpost(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID:
-        return
-    if not context.args:
-        await update.message.reply_text("❌ /addpost <text>")
-        return
-    text = " ".join(context.args)
-    s = load_schedule()
-    s["posts"].append({"type": "text", "content": text})
-    save_schedule(s)
-    await update.message.reply_text(f"✅ Added! Total: {len(s['posts'])}")
-
-async def addforward(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID:
-        return
-    context.user_data['waiting_forward'] = True
-    await update.message.reply_text(f"📤 Forward Mode ON\n\nForward a message now!\n/cancelforward to cancel")
-
-async def cancelforward(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID:
-        return
-    context.user_data['waiting_forward'] = False
-    await update.message.reply_text("❌ Cancelled!")
-
-async def handle_forward(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID:
-        return
-    if not context.user_data.get('waiting_forward'):
-        return
-    
-    msg = update.message
-    if msg.forward_from or msg.forward_from_chat:
-        data = {
-            "type": "forward",
-            "chat_id": msg.forward_from_chat.id if msg.forward_from_chat else msg.forward_from.id,
-            "message_id": msg.forward_from_message_id,
-            "caption": msg.caption or msg.text or "Forwarded"
-        }
-        s = load_schedule()
-        s["posts"].append(data)
-        save_schedule(s)
-        context.user_data['waiting_forward'] = False
-        await update.message.reply_text(f"✅ Forward added! Total: {len(s['posts'])}")
-    else:
-        await update.message.reply_text("❌ Please forward a message!")
-
-async def settime(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID:
-        return
-    if not context.args:
-        await update.message.reply_text("❌ /settime 07:00 AM")
-        return
-    t = " ".join(context.args).upper()
-    try:
-        if "AM" in t or "PM" in t:
-            parts = t.replace("AM", "").replace("PM", "").strip().split(":")
-            h, m = int(parts[0]), int(parts[1])
-            if "PM" in t and h != 12: h += 12
-            elif "AM" in t and h == 12: h = 0
-            s = load_schedule()
-            s["post_time"] = f"{h:02d}:{m:02d}"
-            save_schedule(s)
-            await update.message.reply_text(f"✅ Time set to {t} IST!")
-    except:
-        await update.message.reply_text("❌ Invalid! Use HH:MM AM/PM")
-
-async def setcount(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID:
-        return
-    if not context.args:
-        await update.message.reply_text("❌ /setcount 5")
-        return
-    try:
-        c = int(context.args[0])
-        s = load_schedule()
-        s["daily_count"] = c
-        save_schedule(s)
-        await update.message.reply_text(f"✅ Daily count: {c}")
-    except:
-        await update.message.reply_text("❌ Invalid number!")
-
-async def setmessage(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID:
-        return
-    if not context.args:
-        await update.message.reply_text("❌ /setmessage <msg>")
-        return
-    msg = " ".join(context.args)
-    s = load_schedule()
-    s["custom_message"] = msg
-    save_schedule(s)
-    await update.message.reply_text(f"✅ Custom message set!")
-
-async def listposts(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID:
-        return
-    s = load_schedule()
-    if not s["posts"]:
-        await update.message.reply_text("📭 No posts!")
-        return
-    msg = "📋 *Posts:*\n"
-    for i, p in enumerate(s["posts"], 1):
-        msg += f"{i}. {'📤' if p['type']=='forward' else '📝'} {p.get('caption', p.get('content', ''))[:50]}...\n"
-    await update.message.reply_text(msg, parse_mode="Markdown")
-
-async def removepost(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID:
-        return
-    if not context.args:
-        await update.message.reply_text("❌ /removepost <index>")
-        return
-    try:
-        i = int(context.args[0]) - 1
-        s = load_schedule()
-        if 0 <= i < len(s["posts"]):
-            s["posts"].pop(i)
-            save_schedule(s)
-            await update.message.reply_text(f"✅ Removed #{i+1}")
-        else:
-            await update.message.reply_text("❌ Invalid index!")
-    except:
-        await update.message.reply_text("❌ Invalid number!")
-
+# ---------- STATS ----------
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("❌ Unauthorized!")
         return
-    s = load_schedule()
-    await update.message.reply_text(
-        f"📊 *Stats*\n"
-        f"📝 Queue: {len(s['posts'])}\n"
-        f"⏰ Time: {s['post_time']} IST\n"
-        f"📦 Daily: {s['daily_count']}\n"
-        f"🕐 {ist_str()}",
-        parse_mode="Markdown"
-    )
-
-async def postnow(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID:
-        return
-    await update.message.reply_text(f"⏳ Posting... ({ist_str()})")
-    await auto_post(context)
-
-async def time_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID:
-        return
-    await update.message.reply_text(f"🕐 IST: {ist_str()}")
-
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await start(update, context)
-
-# ---------- AUTO POST ----------
-async def auto_post(context: ContextTypes.DEFAULT_TYPE):
-    s = load_schedule()
-    posts = s["posts"]
-    if not posts:
-        return
-    
-    count = min(s["daily_count"], len(posts))
-    posted = 0
-    
-    for i in range(count):
-        if i >= len(posts):
-            break
-        p = posts[i]
-        try:
-            if p["type"] == "forward":
-                await context.bot.forward_message(
-                    chat_id=CHANNEL_ID,
-                    from_chat_id=p["chat_id"],
-                    message_id=p["message_id"]
-                )
-            else:
-                await context.bot.send_message(
-                    chat_id=CHANNEL_ID,
-                    text=p["content"]
-                )
-            posted += 1
-            await context.bot.send_message(chat_id=CHANNEL_ID, text=s["custom_message"])
-            await asyncio.sleep(3)
-        except Exception as e:
-            print(f"❌ Post error: {e}")
-    
-    if posted > 0:
-        s["posts"] = s["posts"][posted:]
-        save_schedule(s)
-
-# ---------- CHECK TIME ----------
-async def check_time(context: ContextTypes.DEFAULT_TYPE):
-    now = get_ist().strftime("%H:%M")
-    s = load_schedule()
-    if now == s["post_time"]:
-        await auto_post(context)
+    try:
+        count = await context.bot.get_chat_member_count(GROUP_ID)
+        messages = load_messages()
+        await update.message.reply_text(
+            f"📊 *Group Stats*\n👥 Members: {count}\n📝 Messages: {len(messages)}\n🕐 {ist_str()}",
+            parse_mode="Markdown"
+        )
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error: {e}")
 
 # ---------- MAIN ----------
 def main():
-    global WELCOME_MESSAGE
-    if os.path.exists("welcome.txt"):
-        with open("welcome.txt", "r") as f:
-            WELCOME_MESSAGE = f.read()
-    
     app = Application.builder().token(BOT_TOKEN).build()
-    
-    # Handlers
-    app.add_handler(ChatJoinRequestHandler(auto_approve))
+
+    app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, new_member_handler))
+
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("addpost", addpost))
-    app.add_handler(CommandHandler("addforward", addforward))
-    app.add_handler(CommandHandler("cancelforward", cancelforward))
-    app.add_handler(CommandHandler("settime", settime))
-    app.add_handler(CommandHandler("setcount", setcount))
-    app.add_handler(CommandHandler("setmessage", setmessage))
-    app.add_handler(CommandHandler("setwelcome", setwelcome))
-    app.add_handler(CommandHandler("viewwelcome", viewwelcome))
-    app.add_handler(CommandHandler("listposts", listposts))
-    app.add_handler(CommandHandler("removepost", removepost))
+    app.add_handler(CommandHandler("setmsg", setmsg))
+    app.add_handler(CommandHandler("viewmsg", viewmsg))
+    app.add_handler(CommandHandler("clearmmsg", clearmmsg))
     app.add_handler(CommandHandler("stats", stats))
-    app.add_handler(CommandHandler("postnow", postnow))
-    app.add_handler(CommandHandler("approveall", approveall))
-    app.add_handler(CommandHandler("time", time_command))
-    app.add_handler(CommandHandler("help", help_command))
-    app.add_handler(MessageHandler(filters.FORWARDED, handle_forward))
-    
+
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, collect_msg))
+
     print("=" * 50)
-    print(f"🤖 Bot Running! IST: {ist_str()}")
-    print(f"📢 Channel: {CHANNEL_ID}")
-    print("📋 /approveall - Approve ALL pending")
+    print("🤖 Group Welcome Bot Running!")
+    print(f"📢 Group: {GROUP_ID}")
+    print("📋 /setmsg - Set messages")
     print("=" * 50)
-    
+
     app.run_polling()
 
 if __name__ == "__main__":
