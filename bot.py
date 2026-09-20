@@ -7,8 +7,8 @@ from telegram.ext import Application, CommandHandler, ChatJoinRequestHandler, Co
 
 # ---------- CONFIG ----------
 BOT_TOKEN = "8773675256:AAG4iVamzSa3WxZzBNCysfT7yETKdOiziB8"
-CHANNEL_ID = -1004316882856   # 🔥 APNA CHANNEL ID DAALO
-ADMIN_ID = 8961906024
+CHANNEL_ID = -1003550209252   # 🔥 APNA CHANNEL ID DAALO
+ADMIN_ID = 7022423338
 # -------------------------
 
 MSG_FILE = "welcome.json"
