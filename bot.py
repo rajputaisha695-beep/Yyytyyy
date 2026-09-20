@@ -7,7 +7,11 @@ from telegram.ext import Application, CommandHandler, ChatJoinRequestHandler, Co
 
 # ---------- CONFIG ----------
 BOT_TOKEN = "8773675256:AAG4iVamzSa3WxZzBNCysfT7yETKdOiziB8"
-CHANNEL_ID = -1003550209252   # 🔥 Channel ID (aapka group bhi yahi hai)
+
+# 🔥 DONO ID DAALO (Channel + Group)
+CHANNEL_ID = -1003550209252   # Channel ID
+GROUP_ID = -1003550209252     # Group ID (agar alag hai toh change karo)
+
 ADMIN_ID = 7022423338
 # -------------------------
 
@@ -32,23 +36,15 @@ def ist_str():
 # ---------- 🔥 AUTO APPROVE + WELCOME DM ----------
 async def auto_approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
-        # Join request data
-        request = update.chat_join_request
-        if not request:
-            return
-        
-        user = request.from_user
-        chat = request.chat
-        
-        if not user or not chat:
-            return
+        user = update.chat_join_request.from_user
+        chat = update.chat_join_request.chat
 
         # 🔥 Approve karo (Channel ya Group dono ke liye)
         await context.bot.approve_chat_join_request(
             chat_id=chat.id,
             user_id=user.id
         )
-        print(f"✅ {user.first_name} approved at {ist_str()}! (Chat: {chat.id})")
+        print(f"✅ {user.first_name} approved at {ist_str()}!")
 
         # 🔥 Welcome DM bhejo
         msg = load_msg()
@@ -68,6 +64,7 @@ async def auto_approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception as e:
                 print(f"❌ Could not send DM: {e}")
         else:
+            # Default welcome
             try:
                 await context.bot.send_message(
                     chat_id=user.id,
@@ -80,7 +77,7 @@ async def auto_approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         print(f"❌ Auto-approve error: {e}")
 
-# ---------- SET WELCOME ----------
+# ---------- 🔥 SET WELCOME ----------
 async def setwelcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("❌ Unauthorized!")
@@ -99,6 +96,7 @@ async def setwelcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown"
     )
 
+# ---------- VIEW WELCOME ----------
 async def viewwelcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("❌ Unauthorized!")
@@ -114,6 +112,7 @@ async def viewwelcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown"
     )
 
+# ---------- CLEAR ----------
 async def clearwelcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("❌ Unauthorized!")
@@ -121,6 +120,7 @@ async def clearwelcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
     save_msg("")
     await update.message.reply_text("✅ Cleared!")
 
+# ---------- START ----------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("❌ Unauthorized!")
@@ -128,23 +128,32 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     msg = load_msg()
     await update.message.reply_text(
-        f"🤖 *Channel/Group Welcome Bot*\n🕐 {ist_str()}\n\n"
+        f"🤖 *Bot Running*\n🕐 {ist_str()}\n\n"
         f"/setwelcome <msg> - Set welcome message\n"
         f"/viewwelcome - View message\n"
-        f"/clearwelcome - Clear message\n\n"
+        f"/clearwelcome - Clear message\n"
+        f"/stats - Stats\n\n"
         f"📊 Welcome: {'✅ Set' if msg else '❌ Not set'}",
         parse_mode="Markdown"
     )
 
+# ---------- STATS ----------
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("❌ Unauthorized!")
         return
     try:
-        count = await context.bot.get_chat_member_count(CHANNEL_ID)
+        # Channel members
+        ch_count = await context.bot.get_chat_member_count(CHANNEL_ID)
+        # Group members
+        gr_count = await context.bot.get_chat_member_count(GROUP_ID)
         msg = load_msg()
         await update.message.reply_text(
-            f"📊 *Stats*\n👥 Members: {count}\n📝 Welcome: {'✅' if msg else '❌'}\n🕐 {ist_str()}",
+            f"📊 *Stats*\n"
+            f"📢 Channel: {ch_count}\n"
+            f"👥 Group: {gr_count}\n"
+            f"📝 Welcome: {'✅' if msg else '❌'}\n"
+            f"🕐 {ist_str()}",
             parse_mode="Markdown"
         )
     except Exception as e:
@@ -154,7 +163,7 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     app = Application.builder().token(BOT_TOKEN).build()
 
-    # 🔥 Auto Approve Handler
+    # 🔥 Auto Approve Handler (Channel + Group dono ke liye)
     app.add_handler(ChatJoinRequestHandler(auto_approve))
 
     # Commands
@@ -166,8 +175,8 @@ def main():
 
     print("=" * 50)
     print("🤖 Bot Running!")
-    print(f"📢 Chat ID: {CHANNEL_ID}")
-    print(f"👤 Admin ID: {ADMIN_ID}")
+    print(f"📢 Channel: {CHANNEL_ID}")
+    print(f"👥 Group: {GROUP_ID}")
     print("✅ Auto-approve: ON")
     print("📤 Welcome DM: ON")
     print("=" * 50)
