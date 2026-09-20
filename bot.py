@@ -8,9 +8,9 @@ from telegram.ext import Application, CommandHandler, ChatJoinRequestHandler, Co
 # ---------- CONFIG ----------
 BOT_TOKEN = "8773675256:AAG4iVamzSa3WxZzBNCysfT7yETKdOiziB8"
 
-# 🔥 DONO ID DAALO (Channel + Group)
+# 🔥 DONO ID DAALO
 CHANNEL_ID = -1003550209252   # Channel ID
-GROUP_ID = -1003550209252     # Group ID (agar alag hai toh change karo)
+GROUP_ID = -1003550209252     # Group ID
 
 ADMIN_ID = 7022423338
 # -------------------------
@@ -33,49 +33,108 @@ def save_msg(msg):
 def ist_str():
     return (datetime.now() + timedelta(hours=5, minutes=30)).strftime("%I:%M:%S %p")
 
-# ---------- 🔥 AUTO APPROVE + WELCOME DM ----------
+# ---------- 🔥 AUTO APPROVE (Naye Requests) ----------
 async def auto_approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         user = update.chat_join_request.from_user
         chat = update.chat_join_request.chat
 
-        # 🔥 Approve karo (Channel ya Group dono ke liye)
+        print(f"📥 New join request: {user.first_name} for {chat.id}")
+
+        # Approve karo
         await context.bot.approve_chat_join_request(
             chat_id=chat.id,
             user_id=user.id
         )
-        print(f"✅ {user.first_name} approved at {ist_str()}!")
+        print(f"✅ {user.first_name} approved!")
 
-        # 🔥 Welcome DM bhejo
-        msg = load_msg()
-        if msg:
-            try:
-                final_msg = msg.format(
-                    first_name=user.first_name or "Unknown",
-                    username=user.username or "No Username",
-                    user_id=user.id
-                )
-                await context.bot.send_message(
-                    chat_id=user.id,
-                    text=final_msg,
-                    parse_mode=None
-                )
-                print(f"📤 Welcome DM sent to {user.first_name}!")
-            except Exception as e:
-                print(f"❌ Could not send DM: {e}")
-        else:
-            # Default welcome
-            try:
-                await context.bot.send_message(
-                    chat_id=user.id,
-                    text=f"🎉 Welcome {user.first_name}!\n\nThank you for joining!\n🕐 {ist_str()}"
-                )
-                print(f"📤 Default welcome sent!")
-            except:
-                pass
+        # Welcome DM bhejo
+        await send_welcome_dm(context, user)
 
     except Exception as e:
         print(f"❌ Auto-approve error: {e}")
+
+# ---------- 🔥 SEND WELCOME DM ----------
+async def send_welcome_dm(context, user):
+    msg = load_msg()
+    if msg:
+        try:
+            final_msg = msg.format(
+                first_name=user.first_name or "Unknown",
+                username=user.username or "No Username",
+                user_id=user.id
+            )
+            await context.bot.send_message(
+                chat_id=user.id,
+                text=final_msg,
+                parse_mode=None
+            )
+            print(f"📤 Welcome DM sent to {user.first_name}!")
+        except Exception as e:
+            print(f"❌ Could not send DM: {e}")
+    else:
+        try:
+            await context.bot.send_message(
+                chat_id=user.id,
+                text=f"🎉 Welcome {user.first_name}!\n\nThank you for joining!\n🕐 {ist_str()}"
+            )
+            print(f"📤 Default welcome sent!")
+        except:
+            pass
+
+# ---------- 🔥 APPROVE ALL PENDING REQUESTS ----------
+async def approveall(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("❌ Unauthorized!")
+        return
+
+    msg = await update.message.reply_text("📥 Fetching all pending join requests...")
+
+    total_approved = 0
+    total_failed = 0
+
+    # 🔥 Dono IDs ke liye check karo
+    for chat_id in [CHANNEL_ID, GROUP_ID]:
+        try:
+            pending = await context.bot.get_chat_join_requests(chat_id)
+            requests_list = []
+            async for req in pending:
+                requests_list.append(req)
+
+            if not requests_list:
+                print(f"📭 No pending requests for {chat_id}")
+                continue
+
+            print(f"📊 Found {len(requests_list)} requests for {chat_id}")
+
+            for req in requests_list:
+                try:
+                    user = req.from_user
+                    await context.bot.approve_chat_join_request(
+                        chat_id=chat_id,
+                        user_id=user.id
+                    )
+                    total_approved += 1
+                    print(f"✅ Approved: {user.first_name}")
+
+                    # Welcome DM bhejo
+                    await send_welcome_dm(context, user)
+                    await asyncio.sleep(0.5)
+
+                except Exception as e:
+                    total_failed += 1
+                    print(f"❌ Failed to approve: {e}")
+
+        except Exception as e:
+            print(f"❌ Error for {chat_id}: {e}")
+
+    await msg.edit_text(
+        f"✅ *Approve All Complete!*\n\n"
+        f"✅ Approved: {total_approved}\n"
+        f"❌ Failed: {total_failed}\n"
+        f"🕐 {ist_str()}",
+        parse_mode="Markdown"
+    )
 
 # ---------- 🔥 SET WELCOME ----------
 async def setwelcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -84,7 +143,13 @@ async def setwelcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if not context.args:
-        await update.message.reply_text("❌ /setwelcome <your welcome message>")
+        await update.message.reply_text(
+            "❌ /setwelcome <message>\n\n"
+            "Variables:\n"
+            "{first_name} - Member name\n"
+            "{username} - Username\n"
+            "{user_id} - ID"
+        )
         return
 
     msg = " ".join(context.args)
@@ -96,7 +161,6 @@ async def setwelcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown"
     )
 
-# ---------- VIEW WELCOME ----------
 async def viewwelcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("❌ Unauthorized!")
@@ -112,7 +176,6 @@ async def viewwelcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown"
     )
 
-# ---------- CLEAR ----------
 async def clearwelcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("❌ Unauthorized!")
@@ -120,7 +183,6 @@ async def clearwelcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
     save_msg("")
     await update.message.reply_text("✅ Cleared!")
 
-# ---------- START ----------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("❌ Unauthorized!")
@@ -132,20 +194,18 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"/setwelcome <msg> - Set welcome message\n"
         f"/viewwelcome - View message\n"
         f"/clearwelcome - Clear message\n"
+        f"/approveall - Approve ALL pending requests 🔥\n"
         f"/stats - Stats\n\n"
         f"📊 Welcome: {'✅ Set' if msg else '❌ Not set'}",
         parse_mode="Markdown"
     )
 
-# ---------- STATS ----------
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("❌ Unauthorized!")
         return
     try:
-        # Channel members
         ch_count = await context.bot.get_chat_member_count(CHANNEL_ID)
-        # Group members
         gr_count = await context.bot.get_chat_member_count(GROUP_ID)
         msg = load_msg()
         await update.message.reply_text(
@@ -163,7 +223,7 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     app = Application.builder().token(BOT_TOKEN).build()
 
-    # 🔥 Auto Approve Handler (Channel + Group dono ke liye)
+    # Auto Approve
     app.add_handler(ChatJoinRequestHandler(auto_approve))
 
     # Commands
@@ -171,6 +231,7 @@ def main():
     app.add_handler(CommandHandler("setwelcome", setwelcome))
     app.add_handler(CommandHandler("viewwelcome", viewwelcome))
     app.add_handler(CommandHandler("clearwelcome", clearwelcome))
+    app.add_handler(CommandHandler("approveall", approveall))  # 🔥 New
     app.add_handler(CommandHandler("stats", stats))
 
     print("=" * 50)
@@ -179,6 +240,7 @@ def main():
     print(f"👥 Group: {GROUP_ID}")
     print("✅ Auto-approve: ON")
     print("📤 Welcome DM: ON")
+    print("📋 /approveall - Approve ALL pending")
     print("=" * 50)
 
     app.run_polling()
