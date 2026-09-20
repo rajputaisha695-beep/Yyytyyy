@@ -3,182 +3,125 @@ import os
 import json
 from datetime import datetime, timedelta
 from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram.ext import Application, CommandHandler, ChatJoinRequestHandler, ContextTypes
 
 # ---------- CONFIG ----------
 BOT_TOKEN = "8773675256:AAG4iVamzSa3WxZzBNCysfT7yETKdOiziB8"
-GROUP_ID = -1003915549696  
+CHANNEL_ID = -1004316882856   # 🔥 APNA CHANNEL ID DAALO
 ADMIN_ID = 8961906024
+# -------------------------
 
-
-MSG_FILE = "messages.json"
+MSG_FILE = "welcome.json"
 
 # ---------- LOAD/SAVE ----------
-def load_messages():
+def load_msg():
     if os.path.exists(MSG_FILE):
         with open(MSG_FILE, 'r', encoding='utf-8') as f:
             data = json.load(f)
-            return data.get("messages", [])
-    return []
+            return data.get("message", "")
+    return ""
 
-def save_messages(messages):
+def save_msg(msg):
     with open(MSG_FILE, 'w', encoding='utf-8') as f:
-        json.dump({"messages": messages}, f, ensure_ascii=False, indent=2)
+        json.dump({"message": msg}, f, ensure_ascii=False, indent=2)
 
 # ---------- IST TIME ----------
 def ist_str():
     return (datetime.now() + timedelta(hours=5, minutes=30)).strftime("%I:%M:%S %p")
 
-# ---------- 🔥 NEW MEMBER ----------
-async def new_member_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message or not update.message.new_chat_members:
-        return
-    if update.message.chat.id != GROUP_ID:
-        return
+# ---------- 🔥 AUTO APPROVE + WELCOME DM ----------
+async def auto_approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        user = update.chat_join_request.from_user
+        chat = update.chat_join_request.chat
 
-    messages = load_messages()
-    if not messages:
-        return
+        # Approve karo
+        await context.bot.approve_chat_join_request(
+            chat_id=chat.id,
+            user_id=user.id
+        )
+        print(f"✅ {user.first_name} approved at {ist_str()}!")
 
-    for member in update.message.new_chat_members:
-        if member.id == context.bot.id:
-            continue
-
-        print(f"🆕 New member: {member.first_name}")
-
-        # 🔥 Saare messages bhejo
-        for msg in messages:
+        # 🔥 Welcome DM bhejo (sirf member ke inbox me)
+        msg = load_msg()
+        if msg:
             try:
+                final_msg = msg.format(
+                    first_name=user.first_name or "Unknown",
+                    username=user.username or "No Username",
+                    user_id=user.id
+                )
                 await context.bot.send_message(
-                    chat_id=GROUP_ID,
-                    text=msg,
+                    chat_id=user.id,
+                    text=final_msg,
                     parse_mode=None
                 )
-                print("📤 Message sent!")
-                await asyncio.sleep(2)  # 2 second gap
+                print(f"📤 Welcome DM sent to {user.first_name}!")
             except Exception as e:
-                print(f"❌ Error: {e}")
+                print(f"❌ Could not send DM: {e}")
+        else:
+            # Default welcome message
+            try:
+                await context.bot.send_message(
+                    chat_id=user.id,
+                    text=f"🎉 Welcome {user.first_name}!\n\nThank you for joining our channel!\n🕐 {ist_str()}"
+                )
+                print(f"📤 Default welcome sent to {user.first_name}!")
+            except:
+                pass
 
-# ---------- 🔥 SET MESSAGE ----------
-async def setmsg(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    except Exception as e:
+        print(f"❌ Auto-approve error: {e}")
+
+# ---------- 🔥 SET WELCOME MESSAGE ----------
+async def setwelcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("❌ Unauthorized!")
         return
 
-    # Agar command ke saath kuch likha hai toh wahi save karo
-    if context.args:
-        msg = " ".join(context.args)
-        msg = msg.replace("\\n", "\n")
-        
-        # 🔥 Check if message contains separator "---"
-        if "---" in msg:
-            parts = msg.split("---")
-            messages = [p.strip() for p in parts if p.strip()]
-            save_messages(messages)
-            await update.message.reply_text(
-                f"✅ *{len(messages)} messages saved!*\n\n"
-                f"📋 *Preview:*\n" + "\n\n---\n\n".join([f"Msg {i+1}:\n{m}" for i, m in enumerate(messages)]),
-                parse_mode="Markdown"
-            )
-        else:
-            save_messages([msg])
-            await update.message.reply_text(
-                f"✅ *Message saved!*\n\n```\n{msg}\n```",
-                parse_mode="Markdown"
-            )
+    if not context.args:
+        await update.message.reply_text(
+            "❌ *Usage:*\n"
+            "/setwelcome <your welcome message>\n\n"
+            "*Example:*\n"
+            "/setwelcome 🎉 Welcome {first_name}! Thanks for joining!",
+            parse_mode="Markdown"
+        )
         return
 
-    # Multi-line mode
-    context.user_data['collecting'] = True
-    context.user_data['temp_msgs'] = []
-    context.user_data['current_msg'] = []
+    msg = " ".join(context.args)
+    # \n ko newline me convert karo
+    msg = msg.replace("\\n", "\n")
+    save_msg(msg)
 
     await update.message.reply_text(
-        "📝 *Send your messages one by one.*\n"
-        "Type your message and send.\n"
-        "Use `---` to separate messages.\n"
-        "When done, type: `/done`\n"
-        "Cancel: `/cancel`",
+        f"✅ *Welcome message saved!*\n\n```\n{msg}\n```",
         parse_mode="Markdown"
     )
 
-# ---------- COLLECT ----------
-async def collect_msg(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID:
-        return
-
-    if not context.user_data.get('collecting'):
-        return
-
-    text = update.message.text
-
-    if text == "/done":
-        temp_msgs = context.user_data.get('temp_msgs', [])
-        if temp_msgs:
-            save_messages(temp_msgs)
-            preview = "\n\n---\n\n".join([f"Msg {i+1}:\n{m}" for i, m in enumerate(temp_msgs)])
-            await update.message.reply_text(
-                f"✅ *{len(temp_msgs)} messages saved!*\n\n{preview}",
-                parse_mode="Markdown"
-            )
-        else:
-            await update.message.reply_text("❌ No messages to save!")
-        context.user_data['collecting'] = False
-        context.user_data['temp_msgs'] = []
-        context.user_data['current_msg'] = []
-        return
-
-    if text == "/cancel":
-        context.user_data['collecting'] = False
-        context.user_data['temp_msgs'] = []
-        context.user_data['current_msg'] = []
-        await update.message.reply_text("❌ Cancelled!")
-        return
-
-    # 🔥 Check if it's a separator
-    if text == "---":
-        # Save current message
-        current_msg = context.user_data.get('current_msg', [])
-        if current_msg:
-            context.user_data['temp_msgs'].append("\n".join(current_msg))
-            context.user_data['current_msg'] = []
-            await update.message.reply_text(f"✅ Message {len(context.user_data['temp_msgs'])} saved! Send next or /done")
-        else:
-            await update.message.reply_text("⚠️ No message to save! Type your message first.")
-        return
-
-    # Add line to current message
-    context.user_data['current_msg'].append(text)
-    await update.message.reply_text(f"✅ Line added to current message!")
-
-# ---------- VIEW ----------
-async def viewmsg(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# ---------- VIEW WELCOME ----------
+async def viewwelcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("❌ Unauthorized!")
         return
 
-    messages = load_messages()
-    if not messages:
-        await update.message.reply_text("📭 No messages set! Use /setmsg")
+    msg = load_msg()
+    if not msg:
+        await update.message.reply_text("📭 No welcome message set! Use /setwelcome")
         return
 
-    preview = "\n\n---\n\n".join([f"📋 Msg {i+1}:\n{m}" for i, m in enumerate(messages)])
-    
-    if len(preview) > 4000:
-        preview = preview[:4000] + "\n\n... (truncated)"
-    
     await update.message.reply_text(
-        f"📋 *Current Messages:*\n\n{preview}\n\n📊 Total: {len(messages)}",
+        f"📋 *Current Welcome Message:*\n\n```\n{msg}\n```",
         parse_mode="Markdown"
     )
 
 # ---------- CLEAR ----------
-async def clearmmsg(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def clearwelcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("❌ Unauthorized!")
         return
-    save_messages([])
-    await update.message.reply_text("✅ All messages cleared!")
+    save_msg("")
+    await update.message.reply_text("✅ Welcome message cleared!")
 
 # ---------- START ----------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -186,15 +129,18 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Unauthorized!")
         return
 
-    messages = load_messages()
+    msg = load_msg()
     await update.message.reply_text(
-        f"🤖 *Group Welcome Bot*\n🕐 {ist_str()}\n\n"
-        f"/setmsg <message> - Set message (use \\n for newline)\n"
-        f"/setmsg - Multi-line mode\n"
-        f"/viewmsg - View messages\n"
-        f"/clearmmsg - Clear messages\n"
-        f"/stats - Group stats\n\n"
-        f"📊 Messages: {len(messages)}",
+        f"🤖 *Channel Welcome Bot*\n🕐 {ist_str()}\n\n"
+        f"/setwelcome <msg> - Set welcome message\n"
+        f"/viewwelcome - View welcome message\n"
+        f"/clearwelcome - Clear message\n"
+        f"/stats - Channel stats\n\n"
+        f"📊 Welcome Message: {'✅ Set' if msg else '❌ Not set'}\n\n"
+        f"📌 *Variables:*\n"
+        f"{{first_name}} - Member name\n"
+        f"{{username}} - Member username\n"
+        f"{{user_id}} - Member ID",
         parse_mode="Markdown"
     )
 
@@ -204,10 +150,13 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Unauthorized!")
         return
     try:
-        count = await context.bot.get_chat_member_count(GROUP_ID)
-        messages = load_messages()
+        count = await context.bot.get_chat_member_count(CHANNEL_ID)
+        msg = load_msg()
         await update.message.reply_text(
-            f"📊 *Group Stats*\n👥 Members: {count}\n📝 Messages: {len(messages)}\n🕐 {ist_str()}",
+            f"📊 *Channel Stats*\n"
+            f"👥 Members: {count}\n"
+            f"📝 Welcome Message: {'✅ Set' if msg else '❌ Not set'}\n"
+            f"🕐 {ist_str()}",
             parse_mode="Markdown"
         )
     except Exception as e:
@@ -217,20 +166,21 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     app = Application.builder().token(BOT_TOKEN).build()
 
-    app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, new_member_handler))
+    # 🔥 Auto Approve + Welcome DM
+    app.add_handler(ChatJoinRequestHandler(auto_approve))
 
+    # Commands
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("setmsg", setmsg))
-    app.add_handler(CommandHandler("viewmsg", viewmsg))
-    app.add_handler(CommandHandler("clearmmsg", clearmmsg))
+    app.add_handler(CommandHandler("setwelcome", setwelcome))
+    app.add_handler(CommandHandler("viewwelcome", viewwelcome))
+    app.add_handler(CommandHandler("clearwelcome", clearwelcome))
     app.add_handler(CommandHandler("stats", stats))
 
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, collect_msg))
-
     print("=" * 50)
-    print("🤖 Group Welcome Bot Running!")
-    print(f"📢 Group: {GROUP_ID}")
-    print("📋 /setmsg - Set messages")
+    print("🤖 Channel Welcome Bot Running!")
+    print(f"📢 Channel: {CHANNEL_ID}")
+    print("✅ Auto-approve: ON")
+    print("📤 Welcome DM: ON")
     print("=" * 50)
 
     app.run_polling()
