@@ -7,12 +7,13 @@ from telegram.ext import Application, CommandHandler, ChatJoinRequestHandler, Co
 
 # ---------- CONFIG ----------
 BOT_TOKEN = "8773675256:AAG4iVamzSa3WxZzBNCysfT7yETKdOiziB8"
-GROUP_ID = -1001234567890   # 🔥 APNA GROUP ID DAALO
+CHANNEL_ID = -1003550209252   # 🔥 Channel ID (aapka group bhi yahi hai)
 ADMIN_ID = 7022423338
 # -------------------------
 
 MSG_FILE = "welcome.json"
 
+# ---------- LOAD/SAVE ----------
 def load_msg():
     if os.path.exists(MSG_FILE):
         with open(MSG_FILE, 'r', encoding='utf-8') as f:
@@ -24,21 +25,30 @@ def save_msg(msg):
     with open(MSG_FILE, 'w', encoding='utf-8') as f:
         json.dump({"message": msg}, f, ensure_ascii=False, indent=2)
 
+# ---------- IST TIME ----------
 def ist_str():
     return (datetime.now() + timedelta(hours=5, minutes=30)).strftime("%I:%M:%S %p")
 
-# ---------- AUTO APPROVE + WELCOME DM ----------
+# ---------- 🔥 AUTO APPROVE + WELCOME DM ----------
 async def auto_approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
-        user = update.chat_join_request.from_user
-        chat = update.chat_join_request.chat
+        # Join request data
+        request = update.chat_join_request
+        if not request:
+            return
+        
+        user = request.from_user
+        chat = request.chat
+        
+        if not user or not chat:
+            return
 
-        # 🔥 Approve karo
+        # 🔥 Approve karo (Channel ya Group dono ke liye)
         await context.bot.approve_chat_join_request(
             chat_id=chat.id,
             user_id=user.id
         )
-        print(f"✅ {user.first_name} approved at {ist_str()}!")
+        print(f"✅ {user.first_name} approved at {ist_str()}! (Chat: {chat.id})")
 
         # 🔥 Welcome DM bhejo
         msg = load_msg()
@@ -63,7 +73,7 @@ async def auto_approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     chat_id=user.id,
                     text=f"🎉 Welcome {user.first_name}!\n\nThank you for joining!\n🕐 {ist_str()}"
                 )
-                print(f"📤 Default welcome sent to {user.first_name}!")
+                print(f"📤 Default welcome sent!")
             except:
                 pass
 
@@ -118,7 +128,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     msg = load_msg()
     await update.message.reply_text(
-        f"🤖 *Bot Running*\n🕐 {ist_str()}\n\n"
+        f"🤖 *Channel/Group Welcome Bot*\n🕐 {ist_str()}\n\n"
         f"/setwelcome <msg> - Set welcome message\n"
         f"/viewwelcome - View message\n"
         f"/clearwelcome - Clear message\n\n"
@@ -131,7 +141,7 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Unauthorized!")
         return
     try:
-        count = await context.bot.get_chat_member_count(GROUP_ID)
+        count = await context.bot.get_chat_member_count(CHANNEL_ID)
         msg = load_msg()
         await update.message.reply_text(
             f"📊 *Stats*\n👥 Members: {count}\n📝 Welcome: {'✅' if msg else '❌'}\n🕐 {ist_str()}",
@@ -156,8 +166,10 @@ def main():
 
     print("=" * 50)
     print("🤖 Bot Running!")
-    print(f"📢 Group: {GROUP_ID}")
+    print(f"📢 Chat ID: {CHANNEL_ID}")
+    print(f"👤 Admin ID: {ADMIN_ID}")
     print("✅ Auto-approve: ON")
+    print("📤 Welcome DM: ON")
     print("=" * 50)
 
     app.run_polling()
